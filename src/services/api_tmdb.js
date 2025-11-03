@@ -10,6 +10,14 @@ if (!BEARER_TOKEN) {
     console.error("ERRO CRÍTICO: TMDB_BEARER_TOKEN não está configurada no arquivo .env.");
 }
 
+// --- Cache para os Gêneros ---
+// Não precisamos buscar isso da API toda vez.
+let genreCache = {
+    movie: null,
+    tv: null,
+};
+// -----------------------------
+
 /**
  * Função auxiliar genérica para requisições GET à API TMDB
  */
@@ -36,6 +44,43 @@ async function tmdbGet(endpoint, params = {}) {
 }
 
 /**
+ * Busca a lista de gêneros para 'movie' ou 'tv' e armazena em cache.
+ * @param {'movie' | 'tv'} type
+ * @returns {Promise<Array<{id: number, name: string}>>}
+ */
+async function getGenreList(type) {
+    if (genreCache[type]) {
+        return genreCache[type]; // Retorna do cache se já tivermos
+    }
+
+    const data = await tmdbGet(`/genre/${type}/list`);
+    
+    if (!data.genres) {
+        throw new Error(`Não foi possível buscar a lista de gêneros para ${type}.`);
+    }
+
+    genreCache[type] = data.genres; // Salva no cache
+    return data.genres;
+}
+
+/**
+ * Formata os resultados da API (search ou discover) para o nosso formato padrão.
+ */
+function formatResults(results, type) {
+    return results.map(item => ({
+        type: type,
+        title: item.title || item.name, // 'name' para séries
+        originalTitle: item.original_title || item.original_name,
+        releaseDate: item.release_date || item.first_air_date || 'N/A', // 'first_air_date' para séries
+        overview: item.overview || 'Sinopse não disponível.',
+        voteAverage: item.vote_average.toFixed(1),
+        posterUrl: item.poster_path ? `${IMAGE_BASE_URL}${item.poster_path}` : null,
+        id: item.id
+    }));
+}
+
+
+/**
  * Busca filmes (movies) por título.
  */
 async function searchMovieByTitle(title, page = 1) {
@@ -44,23 +89,10 @@ async function searchMovieByTitle(title, page = 1) {
         page: Math.max(1, page)
     });
 
-    if (!data.results || data.results.length === 0) {
-        return { results: [], total_pages: 0, current_page: 0 };
-    }
-
-    const formattedResults = data.results.map(movie => ({
-        type: 'movie',
-        title: movie.title,
-        originalTitle: movie.original_title,
-        releaseDate: movie.release_date || 'N/A',
-        overview: movie.overview || 'Sinopse não disponível.',
-        voteAverage: movie.vote_average.toFixed(1),
-        posterUrl: movie.poster_path ? `${IMAGE_BASE_URL}${movie.poster_path}` : null,
-        id: movie.id
-    }));
+    if (!data.results) return { results: [], total_pages: 0, current_page: 0 };
 
     return { 
-        results: formattedResults, 
+        results: formatResults(data.results, 'movie'), // <--- Usa o formatador
         total_pages: data.total_pages,
         current_page: data.page 
     };
@@ -75,23 +107,10 @@ async function searchTvByTitle(title, page = 1) {
         page: Math.max(1, page)
     });
 
-    if (!data.results || data.results.length === 0) {
-        return { results: [], total_pages: 0, current_page: 0 };
-    }
-
-    const formattedResults = data.results.map(tv => ({
-        type: 'tv',
-        title: tv.name, // Campo 'name' para séries
-        originalTitle: tv.original_name,
-        releaseDate: tv.first_air_date || 'N/A', // Campo 'first_air_date'
-        overview: tv.overview || 'Sinopse não disponível.',
-        voteAverage: tv.vote_average.toFixed(1),
-        posterUrl: tv.poster_path ? `${IMAGE_BASE_URL}${tv.poster_path}` : null,
-        id: tv.id
-    }));
+    if (!data.results) return { results: [], total_pages: 0, current_page: 0 };
 
     return { 
-        results: formattedResults, 
+        results: formatResults(data.results, 'tv'), // <--- Usa o formatador
         total_pages: data.total_pages,
         current_page: data.page 
     };
@@ -106,16 +125,15 @@ async function searchPersonByName(name, page = 1) {
         page: Math.max(1, page)
     });
 
-    if (!data.results || data.results.length === 0) {
-        return { results: [], total_pages: 0, current_page: 0 };
-    }
+    if (!data.results) return { results: [], total_pages: 0, current_page: 0 };
 
+    // Formato de "pessoa" é diferente, não usa o formatador padrão
     const formattedResults = data.results.map(person => ({
         type: 'person',
         title: person.name,
         department: person.known_for_department || 'N/A',
         knownFor: person.known_for
-            .map(item => item.title || item.name) // Mídia pode ser filme (title) ou tv (name)
+            .map(item => item.title || item.name) 
             .join(', ') || 'Nenhum trabalho conhecido listado.',
         posterUrl: person.profile_path ? `${IMAGE_BASE_URL}${person.profile_path}` : null,
         id: person.id
@@ -128,9 +146,32 @@ async function searchPersonByName(name, page = 1) {
     };
 }
 
+/**
+ * (NOVO) Busca mídias (filme ou série) por ID de gênero.
+ * @param {'movie' | 'tv'} type
+ * @param {string} genreId - O ID do gênero
+ */
+async function discoverByGenre(type, genreId, page = 1) {
+    const data = await tmdbGet(`/discover/${type}`, {
+        with_genres: genreId,
+        page: Math.max(1, page),
+        sort_by: 'popularity.desc' // Ordena por popularidade
+    });
+
+    if (!data.results) return { results: [], total_pages: 0, current_page: 0 };
+
+    return { 
+        results: formatResults(data.results, type), // <--- Usa o formatador
+        total_pages: data.total_pages,
+        current_page: data.page 
+    };
+}
+
 
 module.exports = { 
     searchMovieByTitle,
-    searchTvByTitle,     // <-- É ESTA LINHA QUE CORRIGE O ERRO
-    searchPersonByName   // <-- E ESTA
+    searchTvByTitle,
+    searchPersonByName,
+    getGenreList,       // <-- EXPORTA A NOVA FUNÇÃO
+    discoverByGenre     // <-- EXPORTA A NOVA FUNÇÃO
 };

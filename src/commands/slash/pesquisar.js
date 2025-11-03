@@ -1,4 +1,4 @@
-// src/commands/slash/menu.js
+// src/commands/slash/pesquisar.js
 const { 
     SlashCommandBuilder, 
     EmbedBuilder, 
@@ -11,15 +11,15 @@ const MENU_ID = 'menu_select_search_type';
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('menu')
-        .setDescription('Abre o menu principal de busca do TMDB.'),
+        .setName('pesquisar')
+        .setDescription('Abre o menu principal de pesquisa.'),
         
     async execute(interaction) {
         
         const menuEmbed = new EmbedBuilder()
             .setColor(0x0099ff)
-            .setTitle('Menu de Busca - Victor-Frankenstein')
-            .setDescription('Olá! Selecione abaixo o que você deseja buscar no The Movie Database (TMDB).');
+            .setTitle('Menu de pesquisa 🎥')
+            .setDescription('Olá! Selecione abaixo o tipo de conteúdo que você deseja pesquisar.');
 
         const selectMenu = new StringSelectMenuBuilder()
             .setCustomId(MENU_ID)
@@ -27,12 +27,12 @@ module.exports = {
             .addOptions([
                 {
                     label: '🎬 Buscar Filme',
-                    description: 'Busque por um filme pelo título.',
+                    description: 'Busque por um filme.',
                     value: 'movie', // O valor que será retornado
                 },
                 {
                     label: '📺 Buscar Série',
-                    description: 'Busque por uma série de TV pelo título.',
+                    description: 'Busque por uma série de TV.',
                     value: 'tv',
                 },
                 {
