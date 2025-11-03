@@ -9,7 +9,7 @@ services:
       resources:
         limits:
           memory: 7939M 
-    image: bot-discord-victor-frankenstein:v2.0
+    image: bot-discord-victor-frankenstein:1.0.0
     environment:
       # Credenciais do Bot e da API
       - DISCORD_TOKEN=SEU_TOKEN_DO_DISCORD_AQUI
