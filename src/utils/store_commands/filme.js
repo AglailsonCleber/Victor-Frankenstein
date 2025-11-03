@@ -1,7 +1,7 @@
 // src/commands/slash/filme.js
 const { SlashCommandBuilder } = require('discord.js');
 // Importamos o nosso novo handler central
-const { startPagination } = require('../../utils/paginationHandler');
+const { startPagination } = require('../paginationHandler');
 
 module.exports = {
     data: new SlashCommandBuilder()

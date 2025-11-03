@@ -1,6 +1,6 @@
 // src/commands/slash/pessoa.js
 const { SlashCommandBuilder } = require('discord.js');
-const { startPagination } = require('../../utils/paginationHandler');
+const { startPagination } = require('../paginationHandler');
 
 module.exports = {
     data: new SlashCommandBuilder()

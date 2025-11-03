@@ -1,4 +1,4 @@
-// src/commands/prefix/admin.js (CORRIGIDO)
+// src/commands/prefix/admin.js
 const { REST, Routes, PermissionFlagsBits } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -8,20 +8,19 @@ const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.APPLICATION_ID;
 const GUILD_ID = process.env.SERVER_ID;
 
-// Funções deployCommands e deleteCommands permanecem as mesmas
-// ... (código das funções deployCommands e deleteCommands) ...
+// ====================================================================
+// FUNÇÃO 1: DEPLOY (REGISTRAR) COMANDOS
+// ====================================================================
 
 async function deployCommands(message) {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
         return message.reply('❌ Você precisa de permissão de Administrador para usar este comando.');
     }
-    
+
     // 1. Coleta os comandos de barra (/slash)
     const commands = [];
-    // ATENÇÃO: Verifique se este caminho está correto no seu projeto. 
-    // Deveria ser '..', 'slash' se estiver dentro de 'src/commands/prefix'
-    const commandsPath = path.join(__dirname, '..', 'slash'); 
-    
+    const commandsPath = path.join(__dirname, '..', 'slash');
+
     try {
         const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
@@ -44,6 +43,7 @@ async function deployCommands(message) {
     try {
         await message.channel.send(`🚀 Iniciando o registro de ${commands.length} comandos de barra (/) no servidor...`);
 
+        // Rota Guild Commands
         const data = await rest.put(
             Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
             { body: commands },
@@ -52,46 +52,80 @@ async function deployCommands(message) {
         await message.channel.send(`✅ Sucesso! ${data.length} comandos de barra (/) registrados no servidor.`);
     } catch (error) {
         console.error('❌ Erro ao registrar comandos:', error);
-        await message.channel.send('❌ Erro ao comunicar com a API do Discord. Verifique as credenciais no `.env`.');
+        await message.channel.send('❌ Erro ao comunicar com a API do Discord. Verifique as credenciais no `.env` e se o bot está no servidor.');
     }
 }
 
-async function deleteCommands(message) {
+// ====================================================================
+// FUNÇÃO 2: DELETAR APENAS COMANDOS DO BOT NO SERVIDOR (GUILD)
+// ====================================================================
+
+async function deleteMyGuildCommands(message) { // <-- RENOMEADO
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
         return message.reply('❌ Você precisa de permissão de Administrador para usar este comando.');
     }
-    
+
     const rest = new REST().setToken(TOKEN);
 
     try {
-        await message.channel.send('🗑️ Iniciando a exclusão de todos os comandos de barra (/) deste servidor...');
-        
+        await message.channel.send('🗑️ Iniciando a exclusão dos comandos de barra (/) do seu bot neste servidor...');
+
+        // Rota Guild Commands
         await rest.put(
             Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
             { body: [] },
         );
 
-        await message.channel.send('✅ Sucesso! Todos os comandos de barra (/) foram excluídos deste servidor.');
+        await message.channel.send('✅ Sucesso! Comandos de barra (/) do seu bot foram excluídos deste servidor.');
     } catch (error) {
-        console.error('❌ Erro ao deletar comandos:', error);
+        console.error('❌ Erro ao deletar comandos do servidor:', error);
         await message.channel.send('❌ Erro ao comunicar com a API do Discord para exclusão.');
     }
 }
+
+// ====================================================================
+// FUNÇÃO 3: DELETAR APENAS OS COMANDOS GLOBAIS DO BOT (CLIENT)
+// ====================================================================
+
+async function deleteMyGlobalCommands(message) {
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        return message.reply('❌ Você precisa de permissão de Administrador para usar este comando.');
+    }
+
+    const rest = new REST().setToken(TOKEN);
+
+    try {
+        await message.channel.send('🗑️ Iniciando a exclusão dos comandos de barra (/) GLOBAIS do seu bot...');
+
+        // Rota Global Commands
+        await rest.put(
+            Routes.applicationCommands(CLIENT_ID),
+            { body: [] },
+        );
+
+        await message.channel.send('✅ Sucesso! Comandos Globais do seu bot foram excluídos.');
+    } catch (error) {
+        console.error('❌ Erro ao deletar comandos globais:', error);
+        await message.channel.send('❌ Erro ao comunicar com a API do Discord para exclusão global.');
+    }
+}
+
+// ====================================================================
+// EXPORTAÇÃO
+// ====================================================================
 
 module.exports = {
     data: {
         name: 'admin',
         description: 'Comandos administrativos para deploy/delete de comandos de barra.',
     },
-    
-    // <--- ADICIONE ESTA FUNÇÃO VAZIA AQUI PARA PASSAR NA VERIFICAÇÃO DO HANDLER
-    async execute(message, args) { 
-        // Esta função não faz nada, pois a lógica de !deploy-commands e !delete-commands
-        // é tratada diretamente no messageCreate.js
-    }, 
-    // -------------------------------------------------------------------------
-    
-    // Exportamos as funções que serão chamadas no messageCreate.js
+
+    async execute(message, args) {
+        message.reply({ content: 'Use os comandos de prefixo, como `!deploy-commands` ou `!delete-my-guild`.', ephemeral: true });
+    },
+
+    // Exportamos as funções para serem chamadas no messageCreate.js
     deployCommands,
-    deleteCommands
+    deleteMyGuildCommands, // <-- NOVO NOME EXPORTADO
+    deleteMyGlobalCommands
 };
