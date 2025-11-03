@@ -67,4 +67,9 @@ async function searchMovieByTitle(title, page = 1) {
     }
 }
 
-module.exports = { searchMovieByTitle };
+// No final do NOVO arquivo api_tmdb.js:
+module.exports = { 
+    searchMovieByTitle,
+    searchTvByTitle,     // <-- AQUI ESTÁ A FUNÇÃO
+    searchPersonByName   // <-- AQUI ESTÁ A FUNÇÃO
+};

@@ -1,16 +1,23 @@
 # Victor-Frankenstein (Bot para Discord)
 
-Victor-Frankenstein é um bot para Discord focado em entretenimento, construído com Node.js e a biblioteca [Discord.js](https://discord.js.org/). Sua principal funcionalidade é se conectar à API do The Movie Database (TMDB) para fornecer informações detalhadas sobre filmes, séries e celebridades.
+Victor-Frankenstein é um bot para Discord focado em entretenimento, construído com Node.js e a biblioteca [Discord.js](https://discord.js.org/). Sua principal funcionalidade é se conectar à API do The Movie Database (TMDB) para fornecer informações detalhadas sobre filmes, séries e celebridades através de uma interface de menu interativa.
 
 ## ✨ Funcionalidades
 
-Atualmente, o bot suporta os seguintes comandos:
+### Comando Principal
+* **/menu**
+    * Abre a interface principal de busca do bot.
+    * Permite ao usuário escolher o que deseja pesquisar (Filme, Série ou Pessoa) através de um menu *dropdown*.
+    * Abre um formulário (modal) para o usuário inserir o termo de busca.
+    * Exibe os resultados em uma interface de paginação avançada, com botões para navegar entre resultados e páginas da API.
 
-### Comandos de Barra (Slash Commands)
-* `/filme [titulo]` - Busca por um filme no TMDB e permite navegar pelos resultados e páginas da API.
-* `/serie [titulo]` - Busca por uma série de TV no TMDB com navegação de resultados.
-* `/pessoa [nome]` - Busca por um ator, atriz ou diretor.
-* `/ajuda` - Exibe esta mensagem de ajuda com a lista de comandos.
+### Comandos de Atalho (Slash Commands)
+Para acesso mais rápido, os comandos individuais também funcionam:
+
+* `/filme [titulo]` - Busca diretamente por um filme.
+* `/serie [titulo]` - Busca diretamente por uma série de TV.
+* `/pessoa [nome]` - Busca diretamente por um ator, atriz ou diretor.
+* `/ajuda` - Exibe uma mensagem com a lista de todos os comandos.
 
 ### Comandos de Prefixo
 * `!ping` - Responde com "Pong!" para testar a latência do bot.
