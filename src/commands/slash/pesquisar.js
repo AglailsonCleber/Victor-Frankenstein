@@ -6,7 +6,6 @@ const {
     StringSelectMenuBuilder 
 } = require('discord.js');
 
-// ID único para este menu
 const MENU_ID = 'menu_select_search_type';
 
 module.exports = {
@@ -28,7 +27,7 @@ module.exports = {
                 {
                     label: '🎬 Buscar Filme',
                     description: 'Busque por um filme.',
-                    value: 'movie', // O valor que será retornado
+                    value: 'movie',
                 },
                 {
                     label: '📺 Buscar Série',
@@ -44,12 +43,10 @@ module.exports = {
         
         const row = new ActionRowBuilder().addComponents(selectMenu);
 
-        // Responde ao usuário com o menu.
-        // O restante da lógica (mostrar o formulário) será tratado no interactionCreate.js
         await interaction.reply({ 
             embeds: [menuEmbed], 
             components: [row],
-            ephemeral: true // O menu é visível apenas para quem o chamou
+            ephemeral: true
         });
     },
 };

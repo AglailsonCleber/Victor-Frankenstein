@@ -1,6 +1,6 @@
 name: victor-frankenstein
 services:
-  bot-discord-victor-frankenstein:
+  victor-frankenstein:
     cpu_shares: 90
     command:
       - npm
@@ -8,29 +8,71 @@ services:
     deploy:
       resources:
         limits:
-          memory: 7939M 
-    image: bot-discord-victor-frankenstein:1.0.0
+          memory: 7939M
     environment:
-      # Credenciais do Bot e da API
-      - DISCORD_TOKEN=SEU_TOKEN_DO_DISCORD_AQUI
-      - APPLICATION_ID=SEU_APPLICATION_ID_AQUI
-      - SERVER_ID=SEU_SERVER_ID_DE_DEV_AQUI
-      - TMDB_API_KEY=SUA_CHAVE_TMDB_AQUI
-      # Variáveis padrão (mantidas, mas menos críticas para o bot)
+      - APPLICATION_ID=
+      - DISCORD_TOKEN=
       - NODE_VERSION=20.19.5
       - PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      - SERVER_ID=
+      - TMDB_API_KEY=
+      - TMDB_BEARER_TOKEN=
       - YARN_VERSION=1.22.22
+    image: victor-frankenstein:1.0.0
     ports:
       - target: 8080
-        published: "18080"
+        published: "8080"
         protocol: tcp
     restart: unless-stopped
     volumes:
-      - /caminho/completo/do/seu/repositorio/victor-frankenstein:/usr/src/app:delegated
+      - type: bind
+        source: /DATA/AppData/victor-frankenstein
+        target: /usr/src/app
+    x-casaos:
+      envs:
+        - container: PATH
+          description:
+            en_us: ""
+        - container: NODE_VERSION
+          description:
+            en_us: ""
+        - container: YARN_VERSION
+          description:
+            en_us: ""
+      image: ""
+      ports:
+        - container: "8080"
+          description:
+            en_us: ""
     devices: []
     cap_add: []
     network_mode: bridge
     privileged: false
-    container_name: victor-frankenstein-bot
     hostname: ""
-    
+x-casaos:
+  architectures:
+    - amd64
+  author: CasaOS User
+  category: unknown
+  description:
+    en_us: ""
+  developer: unknown
+  hostname: ""
+  icon: ""
+  image: null
+  index: /
+  is_uncontrolled: false
+  main: victor-frankenstein
+  port_map: ""
+  scheme: http
+  store_app_id: victor-frankenstein
+  tagline:
+    en_us: This is a compose app converted from a legacy app (CasaOS v0.4.3 or
+      earlier)
+  thumbnail: ""
+  tips:
+    custom: This is a compose app converted from a legacy app (CasaOS v0.4.3 or
+      earlier)
+  title:
+    custom: ""
+    en_us: victor-frankenstein
