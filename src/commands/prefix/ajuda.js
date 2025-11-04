@@ -2,15 +2,12 @@
 const { EmbedBuilder } = require('discord.js');
 
 module.exports = {
-    // Definimos os dados para o handler de prefixo
     data: {
-        name: 'ajuda', // O nome do comando (ex: !ajuda)
+        name: 'ajuda',
         description: 'Mostra todos os comandos disponíveis e o que eles fazem.',
     },
     
-    // A função execute recebe message e args (argumentos)
     async execute(message, args) {
-        // CORREÇÃO: Atualizamos os comandos de prefixo para refletir as novas funções administrativas.
         const helpEmbed = new EmbedBuilder()
             .setColor(0x0099ff)
             .setTitle('Ajuda do Victor-Frankenstein')
@@ -59,8 +56,6 @@ module.exports = {
             )
             .setFooter({ text: 'Obrigado por me usar!' });
 
-        // Em comandos de prefixo, não podemos usar ephemeral, mas podemos deletar a mensagem original
-        // e enviar a resposta de volta.
         await message.reply({ embeds: [helpEmbed] }); 
     },
 };

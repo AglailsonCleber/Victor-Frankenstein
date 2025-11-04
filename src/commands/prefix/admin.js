@@ -43,7 +43,6 @@ async function deployCommands(message) {
     try {
         await message.channel.send(`🚀 Iniciando o registro de ${commands.length} comandos de barra (/) no servidor...`);
 
-        // Rota Guild Commands
         const data = await rest.put(
             Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
             { body: commands },
@@ -60,7 +59,7 @@ async function deployCommands(message) {
 // FUNÇÃO 2: DELETAR APENAS COMANDOS DO BOT NO SERVIDOR (GUILD)
 // ====================================================================
 
-async function deleteMyGuildCommands(message) { // <-- RENOMEADO
+async function deleteMyGuildCommands(message) {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
         return message.reply('❌ Você precisa de permissão de Administrador para usar este comando.');
     }
@@ -70,7 +69,6 @@ async function deleteMyGuildCommands(message) { // <-- RENOMEADO
     try {
         await message.channel.send('🗑️ Iniciando a exclusão dos comandos de barra (/) do seu bot neste servidor...');
 
-        // Rota Guild Commands
         await rest.put(
             Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
             { body: [] },
@@ -97,7 +95,6 @@ async function deleteMyGlobalCommands(message) {
     try {
         await message.channel.send('🗑️ Iniciando a exclusão dos comandos de barra (/) GLOBAIS do seu bot...');
 
-        // Rota Global Commands
         await rest.put(
             Routes.applicationCommands(CLIENT_ID),
             { body: [] },
@@ -124,8 +121,7 @@ module.exports = {
         message.reply({ content: 'Use os comandos de prefixo, como `!deploy-commands` ou `!delete-my-guild`.', ephemeral: true });
     },
 
-    // Exportamos as funções para serem chamadas no messageCreate.js
     deployCommands,
-    deleteMyGuildCommands, // <-- NOVO NOME EXPORTADO
+    deleteMyGuildCommands,
     deleteMyGlobalCommands
 };
