@@ -1,0 +1,36 @@
+name: victor-frankenstein
+services:
+  bot-discord-victor-frankenstein:
+    cpu_shares: 90
+    command:
+      - npm
+      - start
+    deploy:
+      resources:
+        limits:
+          memory: 7939M 
+    image: bot-discord-victor-frankenstein:1.0.0
+    environment:
+      # Credenciais do Bot e da API
+      - DISCORD_TOKEN=SEU_TOKEN_DO_DISCORD_AQUI
+      - APPLICATION_ID=SEU_APPLICATION_ID_AQUI
+      - SERVER_ID=SEU_SERVER_ID_DE_DEV_AQUI
+      - TMDB_API_KEY=SUA_CHAVE_TMDB_AQUI
+      # Variáveis padrão (mantidas, mas menos críticas para o bot)
+      - NODE_VERSION=20.19.5
+      - PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      - YARN_VERSION=1.22.22
+    ports:
+      - target: 8080
+        published: "18080"
+        protocol: tcp
+    restart: unless-stopped
+    volumes:
+      - /caminho/completo/do/seu/repositorio/victor-frankenstein:/usr/src/app:delegated
+    devices: []
+    cap_add: []
+    network_mode: bridge
+    privileged: false
+    container_name: victor-frankenstein-bot
+    hostname: ""
+    
