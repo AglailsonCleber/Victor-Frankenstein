@@ -85,7 +85,7 @@ function formatEmbedAndContent(searchType, item, currentIndex, totalResults, cur
                     { name: 'Contagem de Votos', value: formatVoteCount(item.voteCount), inline: true },
                     { name: 'Trailer Disponível?', value: item.video ? 'Sim' : 'Não', inline: true }
                 );
-            content += `**Backdrop Path:** \`${item.backdrop_path || 'N/A'}\``;
+            // content += `**Backdrop Path:** \`${item.backdrop_path || 'N/A'}\``;
             break;
         case 'tv':
             embed.setTitle(`📺 ${item.title}`)
