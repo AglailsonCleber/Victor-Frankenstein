@@ -1,51 +1,23 @@
 import { SlashCommandBuilder } from 'discord.js';
 import ytdl from 'ytdl-core';
 import yts from 'yt-search';
-import fetch from 'isomorphic-unfetch';
-import spotifyUrlInfo from 'spotify-url-info';
 import path from 'path';
 import fsp from 'fs/promises';
 import { downloadAudioYtDlp } from '../../utils/downloadAudioYtDlp.js';
-import { localPlayer } from '../../utils/localPlayer.js';
-import { obterInsultoAleatorio } from '../../utils/insultos.js';
-
-const { getData: getSpotifyData } = spotifyUrlInfo(fetch);
-
-// ----------------------------------------------------------------------
-// Função auxiliar: Resolver URLs do Spotify
-// ----------------------------------------------------------------------
-async function resolveSpotifyQuery(query) {
-  const spotifyTrackRegex =
-    /^(https?:\/\/)?(open\.spotify\.com\/)(.*\/)?(track\/|spotify:track:)([a-zA-Z0-9]+)(\?.*)?$/;
-
-  // Se for uma URL do Spotify, tenta obter os metadados
-  if (spotifyTrackRegex.test(query)) {
-    try {
-      const info = await getSpotifyData(query);
-      if (info && info.type === 'track') {
-        const artists = info.artists.map((a) => a.name).join(', ');
-        const title = info.name;
-        const trackTitle = `${artists} - ${title}`;
-        return { artist: artists, title: title, query: trackTitle };
-      }
-      return null;
-    } catch (e) {
-      console.error('❌ Erro ao resolver Spotify URL:', e.message);
-      return null;
-    }
-  }
-  return null;
-}
+import { localPlayer } from '../../controller/localPlayer.js';
+import { obterInsultoAleatorio } from '../../controller/insultos.js';
+import { resolveSpotifyQuery } from '../../controller/spotify.js';
 
 // ----------------------------------------------------------------------
-// Definição do comando /download
+// Definição do comando slash
 // ----------------------------------------------------------------------
+
 export const data = new SlashCommandBuilder()
   .setName('reproduzir')
   .setDescription('▶️ Reproduz áudio no canal de voz do bot.')
   .addStringOption((option) =>
     option
-      .setName('link')
+      .setName('query')
       .setDescription('Link do YouTube/Spotify ou termo de pesquisa')
       .setRequired(true)
   );
@@ -56,7 +28,7 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction) {
   await interaction.deferReply({ ephemeral: false });
 
-  const query = interaction.options.getString('link');
+  const query = interaction.options.getString('query');
 
   let finalQuery = query;
   let trackInfo = { artist: 'Desconhecido', title: 'Música Desconhecida' };
@@ -72,12 +44,16 @@ export async function execute(interaction) {
     source = 'Spotify';
   }
 
+  console.log(`[QUERY] 🔍 Consulta final resolvida: "${finalQuery}" (Fonte: ${source})`);
   // 2. Resolve YouTube (Link Direto ou Pesquisa)
   if (ytdl.validateURL(query)) {
+    console.log(`[YT-DIRECT] 🔗 Link do YouTube detectado: ${query}`);
     // É um link direto do YouTube
     try {
       // Usamos ytdl.getInfo APENAS para obter os metadados
-      const info = await ytdl.getInfo(query);
+      console.log(`[YT-DIRECT] ⏳ Obtendo metadados do YouTube...`);
+      const info = await ytdl.getBasicInfo(query);
+      console.log(`[YT-DIRECT] ✅ Metadados obtidos: ${info}`);
       youtubeUrl = query;
       trackInfo.title = info.videoDetails.title;
       trackInfo.artist = info.videoDetails.author.name || 'Artista Desconhecido';
