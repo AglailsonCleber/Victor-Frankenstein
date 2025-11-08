@@ -4,58 +4,30 @@ import {
     REST, 
     Routes, 
     PermissionFlagsBits 
-} from 'discord.js'; // Substitui require('discord.js')
-import fs from 'fs/promises'; // Usamos a versão assíncrona para compatibilidade com import()
-import path from 'path'; // Substitui require('path')
-import { fileURLToPath } from 'url';
-
-// Não é necessário o require('dotenv').config() aqui se já estiver no index.js
-
-// --- ESM path helpers ---
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-// -------------------------
+} from 'discord.js';
+// Importação do utilitário centralizado (dois níveis acima)
+import { collectCommands } from '../../utils/slashCommandCollector.js'; 
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.APPLICATION_ID;
-// const GUILD_ID = process.env.SERVER_ID; // Variável não utilizada, mantida como comentário
+
 
 // ====================================================================
-// FUNÇÃO 1: DEPLOY (REGISTRAR) COMANDOS NA GUILD ATUAL
+// FUNÇÃO 1: DEPLOY (REGISTRAR) COMANDOS NA GUILD ATUAL (RÁPIDO)
 // ====================================================================
 
-export async function deployCommands(message) {
+export async function deployGuildCommands(message) {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
         return message.reply('❌ Você precisa de permissão de Administrador para usar este comando.');
     }
 
-    // 1. Coleta os comandos de barra (/slash)
-    const commands = [];
-    // O caminho é ajustado para ser relativo à pasta 'slash' (um nível acima de 'prefix')
-    const commandsPath = path.join(__dirname, '..', 'slash'); 
-
-    try {
-        // Usa a versão assíncrona de readdir
-        const commandFiles = (await fs.readdir(commandsPath)).filter(file => file.endsWith('.js'));
-
-        for (const file of commandFiles) {
-            // Caminho completo do arquivo no formato URL para import()
-            const filePath = `file://${path.join(commandsPath, file)}`;
-            
-            // Importação dinâmica (assíncrona) de comandos ESM
-            const command = await import(filePath); 
-            
-            // Comandos ESM usam exportações nomeadas 'data' e 'execute'
-            if ('data' in command && 'execute' in command) {
-                commands.push(command.data.toJSON());
-            } else {
-                console.warn(`[WARNING] Comando Slash mal formatado: ${file}`);
-            }
-        }
-    } catch (error) {
-        console.error('Erro ao ler comandos slash para deploy:', error);
-        return message.reply('❌ Ocorreu um erro ao ler os arquivos de comandos. (Verifique o caminho da pasta slash)');
-    }
+    // 1. Coleta os comandos de barra (/slash) usando o utilitário
+    const collection = await collectCommands();
+    if (!collection.success) {
+         // Responde ao canal com a mensagem de erro da função utilitária
+         return message.reply(collection.message);
+    } 
+    const commands = collection.commands;
 
     // 2. Registra na API
     const rest = new REST().setToken(DISCORD_TOKEN);
@@ -76,10 +48,45 @@ export async function deployCommands(message) {
 }
 
 // ====================================================================
-// FUNÇÃO 2: DELETAR APENAS COMANDOS DO BOT NO SERVIDOR (GUILD)
+// FUNÇÃO 2: DEPLOY (REGISTRAR) COMANDOS GLOBAIS DO BOT (PRODUÇÃO)
 // ====================================================================
 
-export async function deleteMyGuildCommands(message) {
+export async function deployGlobalCommands(message) {
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        return message.reply('❌ Você precisa de permissão de Administrador para usar este comando.');
+    }
+    
+    // 1. Coleta os comandos de barra (/slash) usando o utilitário
+    const collection = await collectCommands();
+    if (!collection.success) {
+        // Responde ao canal com a mensagem de erro da função utilitária
+        return message.reply(collection.message);
+    }
+    const commands = collection.commands;
+
+    // 2. Registra na API
+    const rest = new REST().setToken(DISCORD_TOKEN);
+
+    try {
+        await message.channel.send(`🌍 Iniciando o registro de ${commands.length} comandos de barra (/) GLOBAIS. **Aviso: Isso pode levar até 1 hora para aparecer em todos os servidores!**`);
+
+        const data = await rest.put(
+            Routes.applicationCommands(CLIENT_ID), // Rota Global para toda a aplicação
+            { body: commands },
+        );
+
+        await message.channel.send(`✅ Sucesso! ${data.length} comandos Globais registrados.`);
+    } catch (error) {
+        console.error('❌ Erro ao registrar comandos globais:', error);
+        await message.channel.send('❌ Erro ao comunicar com a API do Discord para deploy global. Verifique as credenciais.');
+    }
+}
+
+// ====================================================================
+// FUNÇÃO 3: DELETAR APENAS COMANDOS DO BOT NO SERVIDOR (GUILD)
+// ====================================================================
+
+export async function deleteGuildCommands(message) {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
         return message.reply('❌ Você precisa de permissão de Administrador para usar este comando.');
     }
@@ -107,10 +114,10 @@ export async function deleteMyGuildCommands(message) {
 }
 
 // ====================================================================
-// FUNÇÃO 3: DELETAR APENAS OS COMANDOS GLOBAIS DO BOT (CLIENT)
+// FUNÇÃO 4: DELETAR APENAS OS COMANDOS GLOBAIS DO BOT (CLIENT)
 // ====================================================================
 
-export async function deleteMyGlobalCommands(message) {
+export async function deleteGlobalCommands(message) {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
         return message.reply('❌ Você precisa de permissão de Administrador para usar este comando.');
     }
@@ -143,9 +150,5 @@ export const data = {
 };
 
 export async function execute(message, args) {
-    message.reply({ content: 'Use os comandos de prefixo, como `!deploy-commands` ou `!delete-my-guild`.', ephemeral: true });
+    message.reply({ content: 'Use os comandos de prefixo, como `!deploy-guild-commands` ou `!delete-guild-commands`.', ephemeral: true });
 }
-
-// Nota: As funções utilitárias (deployCommands, deleteMyGuildCommands, deleteMyGlobalCommands) 
-// já estão exportadas acima, então não precisamos incluí-las novamente na exportação 
-// final do módulo.

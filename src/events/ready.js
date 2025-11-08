@@ -1,6 +1,7 @@
 // src/events/ready.js (Corrigido para ESM)
+
 import { Events } from 'discord.js';
-// import { deployAndCleanCommands } from '../utils/commandDeployer.js'; // Importe utilitários
+import { deployGuildCommands, deployGlobalCommands, deleteGuildCommands, deleteGlobalCommands } from '../utils/commandDeployer.js';
 
 export const data = {
     name: Events.ClientReady, 
@@ -9,9 +10,9 @@ export const data = {
 
 export async function execute(client) {
     console.log(`[STATUS] 🟢 Evento 'ready' recebido. O bot ${client.user.tag} está online e pronto!`);
-    
-    // Rotina de deploy
-    // console.log('[STATUS] Iniciando rotina automática de deploy e limpeza de comandos...');
-    // await deployAndCleanCommands(client); // Certifique-se de que deployAndCleanCommands está adaptado para ESM
+    await deleteGuildCommands(client);
+    await deployGuildCommands(client);
+    // await deleteGlobalCommands(client);
+    // await deployGlobalCommands(client);
     console.log('[STATUS] ✅ Rotina de deploy finalizada. Bot pronto para interações!');
 }
