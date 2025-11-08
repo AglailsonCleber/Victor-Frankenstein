@@ -1,7 +1,10 @@
-// src/services/api_tmdb.js
-const axios = require('axios');
-const { EmbedBuilder } = require('discord.js'); // <-- IMPORTA O EMBEDBUILDER
-require('dotenv').config();
+// src/services/api_tmdb.js (ES Module)
+
+import axios from 'axios'; // Mudar require('axios')
+import { EmbedBuilder } from 'discord.js'; // Mudar require('discord.js')
+
+// Se o seu index.js usa 'import 'dotenv/config'', as variáveis já estão no process.env
+// require('dotenv').config(); // <-- REMOVIDO para evitar redundância e erro CJS
 
 const BEARER_TOKEN = process.env.TMDB_BEARER_TOKEN;
 const BASE_URL = 'https://api.themoviedb.org/3';
@@ -11,7 +14,7 @@ if (!BEARER_TOKEN) {
     console.error("ERRO CRÍTICO: TMDB_BEARER_TOKEN não está configurada no arquivo .env.");
 }
 
-// --- Cache para os Gêneros (Seu código, mantido) ---
+// --- Cache para os Gêneros ---
 let genreCache = {
     movie: null,
     tv: null,
@@ -46,41 +49,40 @@ async function tmdbGet(endpoint, params = {}) {
 /**
  * Busca a lista de gêneros para 'movie' ou 'tv' e armazena em cache.
  */
-async function getGenreList(type) {
+export async function getGenreList(type) { // Adicionar export
     if (genreCache[type]) {
-        return genreCache[type]; // Retorna do cache se já tivermos
+        return genreCache[type];
     }
 
     const data = await tmdbGet(`/genre/${type}/list`);
-    
+
     if (!data.genres) {
         throw new Error(`Não foi possível buscar a lista de gêneros para ${type}.`);
     }
 
-    genreCache[type] = data.genres; // Salva no cache
+    genreCache[type] = data.genres;
     return data.genres;
 }
 
 /**
  * Formata os resultados da API (search ou discover) para o nosso formato padrão.
- * (VOU USAR O SEU FORMATADOR MELHORADO QUE VI NO REPOSITÓRIO!)
  */
-function formatResults(results, type) {
+function formatResults(results, type) { // Não precisa de export se for interno
     return results.map(item => ({
         type: type,
         title: item.title || item.name,
         originalTitle: item.original_title || item.original_name,
-        originalLanguage: item.original_language, // <- Sua melhoria
+        originalLanguage: item.original_language,
         releaseDate: item.release_date || item.first_air_date || 'N/A',
         overview: item.overview || 'Sinopse não disponível.',
-        voteAverage: item.vote_average, // <- Sua melhoria
-        voteCount: item.vote_count,     // <- Sua melhoria
-        popularity: item.popularity,    // <- Sua melhoria
+        voteAverage: item.vote_average,
+        voteCount: item.vote_count,
+        popularity: item.popularity,
         posterUrl: item.poster_path ? `${IMAGE_BASE_URL}${item.poster_path}` : null,
-        backdrop_path: item.backdrop_path ? `https://image.tmdb.org/t/p/w1280${item.backdrop_path}` : null, // <- Sua melhoria
+        backdrop_path: item.backdrop_path ? `https://image.tmdb.org/t/p/w1280${item.backdrop_path}` : null,
         id: item.id,
-        adult: item.adult, // <- Sua melhoria
-        video: item.video, // <- Sua melhoria
+        adult: item.adult,
+        video: item.video,
     }));
 }
 
@@ -88,39 +90,39 @@ function formatResults(results, type) {
 /**
  * Busca filmes (movies) por título.
  */
-async function searchMovieByTitle(title, page = 1) {
+export async function searchMovieByTitle(title, page = 1) { // Adicionar export
     const data = await tmdbGet('/search/movie', {
         query: title,
         page: Math.max(1, page)
     });
     if (!data.results) return { results: [], total_pages: 0, current_page: 0 };
-    return { 
-        results: formatResults(data.results, 'movie'), 
+    return {
+        results: formatResults(data.results, 'movie'),
         total_pages: data.total_pages,
-        current_page: data.page 
+        current_page: data.page
     };
 }
 
 /**
  * Busca séries de TV (tv) por título.
  */
-async function searchTvByTitle(title, page = 1) {
+export async function searchTvByTitle(title, page = 1) { // Adicionar export
     const data = await tmdbGet('/search/tv', {
         query: title,
         page: Math.max(1, page)
     });
     if (!data.results) return { results: [], total_pages: 0, current_page: 0 };
-    return { 
-        results: formatResults(data.results, 'tv'), 
+    return {
+        results: formatResults(data.results, 'tv'),
         total_pages: data.total_pages,
-        current_page: data.page 
+        current_page: data.page
     };
 }
 
 /**
  * Busca pessoas (atores, diretores) por nome.
  */
-async function searchPersonByName(name, page = 1) {
+export async function searchPersonByName(name, page = 1) { // Adicionar export
     const data = await tmdbGet('/search/person', {
         query: name,
         page: Math.max(1, page)
@@ -133,44 +135,41 @@ async function searchPersonByName(name, page = 1) {
         title: person.name,
         department: person.known_for_department || 'N/A',
         knownFor: person.known_for
-            .map(item => item.title || item.name) 
+            .map(item => item.title || item.name)
             .join(', ') || 'Nenhum trabalho conhecido listado.',
         posterUrl: person.profile_path ? `${IMAGE_BASE_URL}${person.profile_path}` : null,
         id: person.id,
-        popularity: person.popularity // <- Sua melhoria
+        popularity: person.popularity
     }));
 
-    return { 
-        results: formattedResults, 
+    return {
+        results: formattedResults,
         total_pages: data.total_pages,
-        current_page: data.page 
+        current_page: data.page
     };
 }
 
 /**
  * Busca mídias (filme ou série) por ID de gênero.
  */
-async function discoverByGenre(type, genreId, page = 1) {
+export async function discoverByGenre(type, genreId, page = 1) { // Adicionar export
     const data = await tmdbGet(`/discover/${type}`, {
         with_genres: genreId,
         page: Math.max(1, page),
-        sort_by: 'popularity.desc' 
+        sort_by: 'popularity.desc'
     });
     if (!data.results) return { results: [], total_pages: 0, current_page: 0 };
-    return { 
-        results: formatResults(data.results, type), 
+    return {
+        results: formatResults(data.results, type),
         total_pages: data.total_pages,
-        current_page: data.page 
+        current_page: data.page
     };
 }
 
 /**
  * (NOVA FUNÇÃO) Busca os "Watch Providers" (Onde Assistir) para um filme ou série.
- * @param {'movie' | 'tv'} type
- * @param {string | number} id - O ID do filme ou série
- * @returns {Promise<EmbedBuilder>} Um Embed formatado com os providers.
  */
-async function getWatchProviders(type, id, title) {
+export async function getWatchProviders(type, id, title) { // Adicionar export
     const data = await tmdbGet(`/${type}/${id}/watch/providers`);
     const embed = new EmbedBuilder()
         .setColor(0x0099ff)
@@ -196,7 +195,7 @@ async function getWatchProviders(type, id, title) {
         { name: '🎟️ Alugar', value: mapProviders(rent), inline: true },
         { name: '💳 Comprar', value: mapProviders(buy), inline: true }
     );
-    
+
     if (link) {
         embed.setURL(link); // Link direto para o TMDB com mais opções
         embed.setFooter({ text: 'Fonte: TMDB (JustWatch). Clique no título para ver mais opções.' });
@@ -207,12 +206,5 @@ async function getWatchProviders(type, id, title) {
     return embed;
 }
 
-
-module.exports = { 
-    searchMovieByTitle,
-    searchTvByTitle,
-    searchPersonByName,
-    getGenreList,
-    discoverByGenre,
-    getWatchProviders // <-- EXPORTA A NOVA FUNÇÃO
-};
+// Em ES Modules, você exporta as funções diretamente, em vez de usar module.exports
+// Não há mais necessidade de um bloco module.exports.

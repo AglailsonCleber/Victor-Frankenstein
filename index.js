@@ -1,28 +1,32 @@
-// index.js
-require('dotenv').config();
-const { Client, Collection, GatewayIntentBits } = require('discord.js');
-const { loadEvents } = require('./src/handlers/eventHandler');
-const { loadCommands } = require('./src/handlers/commandHandler');
+// index.js (Corrigido para ES Modules e Coleções)
 
-// Crie a instância do Client e adicione a Collection para comandos.
+// 1. dotenv - Mude require() para import
+import 'dotenv/config';
+
+// 2. discord.js, handlers - Mude require() para import
+import { Client, Collection, GatewayIntentBits } from 'discord.js';
+import { loadEvents } from './src/handlers/eventHandler.js';
+import { loadCommands } from './src/handlers/commandHandler.js';
+
+// Crie a instância do Client
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent, // Necessário para o '!ping' (comandos de prefixo)
-        // Adicione outras Intents conforme seu bot crescer (ex: GuildMembers)
+        GatewayIntentBits.MessageContent,
     ],
 });
 
-// Adiciona uma propriedade 'commands' ao cliente, essencial para o handler.
-client.commands = new Collection();
+// --- CORREÇÃO: Inicialize as DUAS coleções esperadas pelo commandHandler.js ---
+client.prefixCommands = new Collection();
+client.slashCommands = new Collection();
+// -----------------------------------------------------------------------------
 
 // 1. Carrega Eventos
 loadEvents(client);
 
 // 2. Carrega Comandos
-// Nota: Os comandos de barra (/) são registrados APENAS uma vez, após o evento 'ready'.
-loadCommands(client);
+await loadCommands(client);
 
 // Conecta o bot
 client.login(process.env.DISCORD_TOKEN);

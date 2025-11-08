@@ -1,32 +1,43 @@
-// src/utils/commandDeployer.js
-const { REST, Routes } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-require('dotenv').config();
+// src/utils/commandDeployer.js (ES Module com Importação Dinâmica)
+
+import { REST, Routes } from 'discord.js';
+import fs from 'fs/promises'; // Usaremos a versão assíncrona para melhor compatibilidade com import()
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Para obter o __dirname em ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.APPLICATION_ID;
-const GUILD_ID = process.env.SERVER_ID;
+// const GUILD_ID = process.env.SERVER_ID;
 
 const rest = new REST().setToken(TOKEN);
 
 // Rota de Guilda (para desenvolvimento rápido)
-const GUILD_COMMANDS_ROUTE = Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID);
+const GUILD_COMMANDS_ROUTE = Routes.applicationGuildCommands(CLIENT_ID, client.guilds.cache.first()?.id || ''); // Usa o primeiro guilda do cache
 
 /**
- * Coleta os dados dos comandos de barra da pasta 'slash'.
- * @returns {Array} Array de objetos JSON dos comandos.
+ * Coleta os dados dos comandos de barra da pasta 'slash' usando import() dinâmico.
+ * @returns {Promise<Array>} Promessa de Array de objetos JSON dos comandos.
  */
-function collectSlashCommands() {
+async function collectSlashCommands() {
     const commands = [];
-    // Assumindo que este utilitário está em src/utils, o caminho é: ../commands/slash
     const commandsPath = path.join(__dirname, '..', 'commands', 'slash');
 
     try {
-        const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+        // Usamos fs/promises.readdir para esperar pelos nomes dos arquivos
+        const commandFiles = (await fs.readdir(commandsPath)).filter(file => file.endsWith('.js'));
 
         for (const file of commandFiles) {
-            const command = require(path.join(commandsPath, file));
+            // Caminho completo do arquivo no formato URL para import()
+            const filePath = `file://${path.join(commandsPath, file)}`;
+            
+            // Importação dinâmica (é assíncrona!)
+            const command = await import(filePath); 
+            
+            // Os comandos em ESM usam 'export const data' e 'export async function execute'
             if ('data' in command && 'execute' in command) {
                 commands.push(command.data.toJSON());
             }
@@ -42,15 +53,15 @@ function collectSlashCommands() {
  * 2. Registra os novos comandos.
  * @param {import('discord.js').Client} client - O objeto client do bot.
  */
-async function deployAndCleanCommands(client) {
-    const commandData = collectSlashCommands();
+export async function deployAndCleanCommands(client) {
+    // Agora collectSlashCommands é assíncrona e precisa de await
+    const commandData = await collectSlashCommands(); 
 
-    console.log(`[DEPLOY] Iniciando rotina de deploy no servidor ID: ${GUILD_ID}`);
+    console.log(`[DEPLOY] Iniciando rotina de deploy no servidor ID: ${client.guilds.cache.first()?.id || 'Desconhecido'}`);
 
     // --- PASSO 1: DELETAR (LIMPEZA) ---
     try {
         console.log(`[DEPLOY] Tentando limpar ${client.user.tag}'s comandos antigos...`);
-        // Envia um array vazio para a rota GUILD para deletar TUDO que o bot registrou lá.
         await rest.put(
             GUILD_COMMANDS_ROUTE,
             { body: [] },
@@ -59,7 +70,6 @@ async function deployAndCleanCommands(client) {
 
     } catch (error) {
         console.error('[DEPLOY ERROR] ❌ Falha ao limpar comandos antigos:', error);
-        // Não é um erro fatal, podemos prosseguir com o deploy.
     }
 
     // --- PASSO 2: DEPLOY (REGISTRO) ---
@@ -79,5 +89,3 @@ async function deployAndCleanCommands(client) {
         console.error('[DEPLOY ERROR] ❌ Falha ao registrar novos comandos:', error);
     }
 }
-
-module.exports = { deployAndCleanCommands };

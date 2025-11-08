@@ -1,31 +1,62 @@
-// src/handlers/eventHandler.js
-const fs = require('fs');
+// src/handlers/eventHandler.js (ES Module com Debugging)
 
-function loadEvents(client) {
-    const eventFiles = fs.readdirSync('src/events').filter(file => file.endsWith('.js'));
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 
-    console.log('\n--- Carregando Eventos ---'); // Log para visualização clara
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-    for (const file of eventFiles) {
-        try {
-            // Importa o arquivo de evento
-            const event = require(`../events/${file}`);
+/**
+ * Carrega todos os eventos de subdiretórios e os registra no client.
+ * @param {import('discord.js').Client} client - O objeto client do bot.
+ */
+export async function loadEvents(client) {
+    console.log('\n--- Carregando Eventos ---');
+    
+    // Caminho para a pasta 'events' (um nível acima de 'handlers')
+    const eventsDir = path.join(__dirname, '..', 'events');
 
-            // Se o evento tiver 'once: true' (como o 'ready'), usa 'once', senão usa 'on'.
-            if (event.once) {
-                client.once(event.name, (...args) => event.execute(...args, client));
-            } else {
-                client.on(event.name, (...args) => event.execute(...args, client));
+    try {
+        const eventFiles = (await fs.readdir(eventsDir)).filter(file => file.endsWith('.js'));
+
+        for (const file of eventFiles) {
+            const filePath = path.join(eventsDir, file);
+            // Converte o caminho do sistema de arquivos para URL (necessário para import() dinâmico)
+            const fileUrl = pathToFileURL(filePath).href;
+
+            try {
+                // Importação dinâmica (assíncrona)
+                const event = await import(fileUrl);
+
+                // Eventos ESM devem ter 'export const data' e 'export async function execute'
+                if ('data' in event && 'execute' in event) {
+                    const eventName = event.data.name;
+                    const isOnce = event.data.once;
+                    
+                    if (typeof eventName === 'undefined') {
+                        console.error(`[EVENT ERROR] ❌ Evento ${file} carregado, mas 'data.name' está UNDEFINED. Objeto 'data':`, event.data);
+                        continue; // Pula para o próximo arquivo
+                    }
+
+                    if (isOnce) {
+                        client.once(eventName, (...args) => event.execute(client, ...args));
+                    } else {
+                        // Assumindo que a função execute em eventos tem a assinatura correta
+                        client.on(eventName, (...args) => event.execute(...args));
+                    }
+
+                    console.log(`[EVENT] ✅ Carregado com Sucesso: ${eventName}`);
+                } else {
+                    console.warn(`[EVENT WARNING] ⚠️ Arquivo ${file} ignorado (Falta 'data' ou 'execute').`);
+                }
+
+            } catch (error) {
+                console.error(`[EVENT ERROR] ❌ Falha ao importar ${file}: ${error.message}`);
             }
-            
-            // ✅ LOG ADICIONADO (ou confirmado)
-            console.log(`[EVENT] Carregado com Sucesso: ${event.name}`); 
-
-        } catch (error) {
-            console.error(`[EVENT ERROR] Falha ao carregar o evento ${file}:`, error.message);
         }
+    } catch (error) {
+        console.error('[EVENT ERROR] ❌ Falha ao ler o diretório de eventos:', error);
     }
     console.log('--------------------------');
 }
-
-module.exports = { loadEvents };
