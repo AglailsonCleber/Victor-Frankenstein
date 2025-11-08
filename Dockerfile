@@ -8,12 +8,11 @@ FROM node:20-alpine
 WORKDIR /usr/src/app
 
 RUN apk update && \
-    # 1. Instala FFmpeg (para muxing e processamento de áudio/vídeo)
+    # 1. Instala FFmpeg
     apk add --no-cache ffmpeg && \
-    # 2. Instala Python e Pip (para o yt-dlp)
-    apk add --no-cache python3 py3-pip && \
-    # 3. Instala o yt-dlp (o downloader de mídia)
-    pip install yt-dlp
+    # 2. Instala Python/Pip E yt-dlp JUNTOS via apk
+    apk add --no-cache python3 py3-pip yt-dlp
+    # Você pode remover a linha 'pip install yt-dlp' completamente.
 
 # Passo 3: Otimização de Cache - Instalação de Dependências Node.js
 # Copia APENAS os arquivos de configuração de dependências.
