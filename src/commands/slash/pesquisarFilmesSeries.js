@@ -1,0 +1,53 @@
+// src/commands/slash/pesquisar.js (ES Module)
+
+import {
+    SlashCommandBuilder,
+    EmbedBuilder,
+    ActionRowBuilder,
+    StringSelectMenuBuilder
+} from 'discord.js'; // Mudar require para import
+
+export const MENU_ID = 'menu_select_search_type'; // Exportar o ID, se necessário em outro lugar
+
+// 1. Exportar 'data' como uma constante
+export const data = new SlashCommandBuilder()
+    .setName('pesquisar')
+    .setDescription('Abre o menu principal de pesquisa.');
+
+// 2. Exportar 'execute' como uma função assíncrona
+export async function execute(interaction) {
+
+    const menuEmbed = new EmbedBuilder()
+        .setColor(0x0099ff)
+        .setTitle('Menu de pesquisa 🎥')
+        .setDescription('Olá! Selecione abaixo o tipo de conteúdo que você deseja pesquisar.');
+
+    const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId(MENU_ID)
+        .setPlaceholder('Escolha uma opção...')
+        .addOptions([
+            {
+                label: '🎬 Buscar Filme',
+                description: 'Busque por um filme.',
+                value: 'movie',
+            },
+            {
+                label: '📺 Buscar Série',
+                description: 'Busque por uma série de TV.',
+                value: 'tv',
+            },
+            {
+                label: '👤 Buscar Pessoa',
+                description: 'Busque por um ator, atriz ou diretor(a).',
+                value: 'person',
+            },
+        ]);
+
+    const row = new ActionRowBuilder().addComponents(selectMenu);
+
+    await interaction.reply({
+        embeds: [menuEmbed],
+        components: [row],
+        ephemeral: true
+    });
+}
