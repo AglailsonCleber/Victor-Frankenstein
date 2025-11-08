@@ -1,27 +1,31 @@
 # Passo 1: Imagem Base
-# Usamos a imagem oficial 'node:20-alpine'. 'Alpine' é uma versão do Linux muito leve,
-# o que torna seu contêiner de bot muito menor e mais rápido.
+# Usamos a imagem oficial 'node:20-alpine'.
 FROM node:20-alpine
 
-# Passo 2: Diretório de Trabalho
-# Define o diretório padrão dentro do contêiner onde o bot ficará.
+# Passo 2: Instalação das Dependências do Sistema (FFmpeg, Python, yt-dlp)
+# É mais eficiente instalar estas ferramentas antes das dependências do Node.js.
+# O '--no-cache' otimiza o tamanho final da imagem.
 WORKDIR /usr/src/app
 
-# Passo 3: Otimização de Cache - Instalação de Dependências
-# Copia APENAS o package.json e o package-lock.json primeiro.
-# O Docker só re-executará este passo se estes arquivos mudarem.
+RUN apk update && \
+    # 1. Instala FFmpeg (para muxing e processamento de áudio/vídeo)
+    apk add --no-cache ffmpeg && \
+    # 2. Instala Python e Pip (para o yt-dlp)
+    apk add --no-cache python3 py3-pip && \
+    # 3. Instala o yt-dlp (o downloader de mídia)
+    pip install yt-dlp
+
+# Passo 3: Otimização de Cache - Instalação de Dependências Node.js
+# Copia APENAS os arquivos de configuração de dependências.
 COPY package*.json ./
 
 # Instala APENAS as dependências de produção (ignora 'devDependencies')
-# Isso é crucial para manter a imagem leve.
 RUN npm install --omit=dev
 
 # Passo 4: Copiar o Código-Fonte
-# Copia todo o resto do seu projeto (index.js, pasta src/, etc.) 
-# para o diretório de trabalho.
+# Copia o restante do seu projeto.
 COPY . .
 
 # Passo 5: Comando de Execução
 # Este é o comando que o CasaOS/Docker executará para iniciar o bot.
-# Ele chama o script "start" que você definiu no package.json.
 CMD [ "npm", "start" ]
