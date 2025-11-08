@@ -4,38 +4,32 @@ import {
     REST, 
     Routes, 
     PermissionFlagsBits 
-} from 'discord.js'; // Substitui require('discord.js')
-import fs from 'fs/promises'; // Usamos a versão assíncrona para compatibilidade com import()
-import path from 'path'; // Substitui require('path')
+} from 'discord.js';
+import fs from 'fs/promises'; 
+import path from 'path'; 
 import { fileURLToPath } from 'url';
-
-// Não é necessário o require('dotenv').config() aqui se já estiver no index.js
-
-// --- ESM path helpers ---
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-// -------------------------
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.APPLICATION_ID;
-// const GUILD_ID = process.env.SERVER_ID; // Variável não utilizada, mantida como comentário
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 
 // ====================================================================
-// FUNÇÃO 1: DEPLOY (REGISTRAR) COMANDOS NA GUILD ATUAL
+// FUNÇÃO UTILIÁRIA INTERNA: Coletar Comandos Slash
 // ====================================================================
 
-export async function deployCommands(message) {
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-        return message.reply('❌ Você precisa de permissão de Administrador para usar este comando.');
-    }
-
-    // 1. Coleta os comandos de barra (/slash)
+/**
+ * Coleta todos os comandos de barra da pasta 'slash'.
+ * @param {import('discord.js').Message} message A mensagem de onde o comando foi invocado (para responder em caso de erro).
+ * @returns {Promise<{success: boolean, commands?: Array<Object>}>} O array de comandos JSON ou um objeto de erro.
+ */
+async function collectSlashCommands(message) {
     const commands = [];
     // O caminho é ajustado para ser relativo à pasta 'slash' (um nível acima de 'prefix')
     const commandsPath = path.join(__dirname, '..', 'slash'); 
 
     try {
-        // Usa a versão assíncrona de readdir
         const commandFiles = (await fs.readdir(commandsPath)).filter(file => file.endsWith('.js'));
 
         for (const file of commandFiles) {
@@ -52,10 +46,28 @@ export async function deployCommands(message) {
                 console.warn(`[WARNING] Comando Slash mal formatado: ${file}`);
             }
         }
+        return { success: true, commands };
     } catch (error) {
         console.error('Erro ao ler comandos slash para deploy:', error);
-        return message.reply('❌ Ocorreu um erro ao ler os arquivos de comandos. (Verifique o caminho da pasta slash)');
+        await message.reply('❌ Ocorreu um erro ao ler os arquivos de comandos. (Verifique o caminho da pasta slash)');
+        return { success: false };
     }
+}
+
+
+// ====================================================================
+// FUNÇÃO 1: DEPLOY (REGISTRAR) COMANDOS NA GUILD ATUAL (RÁPIDO)
+// ====================================================================
+
+export async function deployGuildCommands(message) {
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        return message.reply('❌ Você precisa de permissão de Administrador para usar este comando.');
+    }
+
+    // 1. Coleta os comandos de barra (/slash)
+    const collection = await collectSlashCommands(message);
+    if (!collection.success) return; // Erro já tratado e respondido na utilitária
+    const commands = collection.commands;
 
     // 2. Registra na API
     const rest = new REST().setToken(DISCORD_TOKEN);
@@ -76,10 +88,42 @@ export async function deployCommands(message) {
 }
 
 // ====================================================================
-// FUNÇÃO 2: DELETAR APENAS COMANDOS DO BOT NO SERVIDOR (GUILD)
+// FUNÇÃO 2: DEPLOY (REGISTRAR) COMANDOS GLOBAIS DO BOT (PRODUÇÃO)
 // ====================================================================
 
-export async function deleteMyGuildCommands(message) {
+export async function deployGlobalCommands(message) {
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        return message.reply('❌ Você precisa de permissão de Administrador para usar este comando.');
+    }
+    
+    // 1. Coleta os comandos de barra (/slash)
+    const collection = await collectSlashCommands(message);
+    if (!collection.success) return; // Erro já tratado e respondido na utilitária
+    const commands = collection.commands;
+
+    // 2. Registra na API
+    const rest = new REST().setToken(DISCORD_TOKEN);
+
+    try {
+        await message.channel.send(`🌍 Iniciando o registro de ${commands.length} comandos de barra (/) GLOBAIS. **Aviso: Isso pode levar até 1 hora para aparecer em todos os servidores!**`);
+
+        const data = await rest.put(
+            Routes.applicationCommands(CLIENT_ID), // Rota Global para toda a aplicação
+            { body: commands },
+        );
+
+        await message.channel.send(`✅ Sucesso! ${data.length} comandos Globais registrados.`);
+    } catch (error) {
+        console.error('❌ Erro ao registrar comandos globais:', error);
+        await message.channel.send('❌ Erro ao comunicar com a API do Discord para deploy global. Verifique as credenciais.');
+    }
+}
+
+// ====================================================================
+// FUNÇÃO 3: DELETAR APENAS COMANDOS DO BOT NO SERVIDOR (GUILD)
+// ====================================================================
+
+export async function deleteGuildCommands(message) {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
         return message.reply('❌ Você precisa de permissão de Administrador para usar este comando.');
     }
@@ -107,10 +151,10 @@ export async function deleteMyGuildCommands(message) {
 }
 
 // ====================================================================
-// FUNÇÃO 3: DELETAR APENAS OS COMANDOS GLOBAIS DO BOT (CLIENT)
+// FUNÇÃO 4: DELETAR APENAS OS COMANDOS GLOBAIS DO BOT (CLIENT)
 // ====================================================================
 
-export async function deleteMyGlobalCommands(message) {
+export async function deleteGlobalCommands(message) {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
         return message.reply('❌ Você precisa de permissão de Administrador para usar este comando.');
     }
@@ -143,9 +187,6 @@ export const data = {
 };
 
 export async function execute(message, args) {
-    message.reply({ content: 'Use os comandos de prefixo, como `!deploy-commands` ou `!delete-my-guild`.', ephemeral: true });
+    // Nota: Esta função executa quando o comando de prefixo é chamado sem argumentos.
+    message.reply({ content: 'Use os comandos de prefixo, como `!deploy-guild-commands` ou `!delete-guild-commands`.', ephemeral: true });
 }
-
-// Nota: As funções utilitárias (deployCommands, deleteMyGuildCommands, deleteMyGlobalCommands) 
-// já estão exportadas acima, então não precisamos incluí-las novamente na exportação 
-// final do módulo.

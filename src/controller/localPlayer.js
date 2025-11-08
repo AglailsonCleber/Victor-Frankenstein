@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { Client, GatewayIntentBits } from "discord.js";
+import { Client, GatewayIntentBits, ChannelType } from "discord.js";
 import {
     joinVoiceChannel,
     createAudioPlayer,
@@ -12,34 +12,72 @@ import {
 import path from "path";
 import fs from "fs";
 import fsp from 'fs/promises';
+import { setActivePlayback, clearActivePlayback, getActivePlayback } from '../utils/playbackStateManager.js';
 
 export async function localPlayer(filePath, mediaName, interaction) {
 
     const GUILD_ID = interaction.guildId;
-    const CHANNEL_ID = interaction.channelId;
     const LOCAL_FILE_PATH = path.join(process.cwd(), "data", filePath);
+    
+    // 1. Obtém o ID da mensagem de resposta da interação atual
+    let currentMessage;
+    try {
+        currentMessage = await interaction.fetchReply();
+    } catch (e) {
+        console.error("❌ Não foi possível obter a mensagem de resposta da interação:", e);
+        return;
+    }
+    const currentMessageId = currentMessage.id;
 
     const client = new Client({
+        // Certifica-se de que as intents necessárias estão presentes
         intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
     });
 
     console.log("Iniciando o bot de voz...");
+    console.log(`[DEBUG] Guild ID da Interação: ${GUILD_ID}`);
     
     const initMsg = `🔊 Iniciando reprodução do arquivo: \`${mediaName}\` no canal de voz...`;
     await interaction.editReply({ content: initMsg });
     
-    client.once("ready", async () => {
+    // CORREÇÃO: Usando clientReady em vez de ready para evitar o DeprecationWarning
+    client.once("clientReady", async () => {
         
         console.log(`✅ Logado como ${client.user.tag}`);
-
-        // Verifica se o guild e o canal de voz existem
+        
+        // ** LOGS DE DIAGNÓSTICO **
+        console.log(`[DIAGNOSTICO] Buscando Guild com ID: ${GUILD_ID}`);
         let guild = client.guilds.cache.get(GUILD_ID);
-        let channel = guild ? guild.channels.cache.get(CHANNEL_ID) : null;
-        if (!guild || !channel || channel.type !== 2) {
+        console.log(`[DIAGNOSTICO] Guild Encontrada: ${guild ? guild.name : 'NÃO ENCONTRADA'}`);
+
+        // Pega o canal de voz do usuário que invocou o comando
+        let channel = interaction.member?.voice.channel;
+        
+        console.log(`[DIAGNOSTICO] interaction.member.voice: ${interaction.member?.voice ? 'OK' : 'NULL/UNDEFINED'}`);
+        console.log(`[DIAGNOSTICO] Canal de Voz: ${channel ? `${channel.name} (Tipo: ${channel.type})` : 'NÃO ENCONTRADO/USUÁRIO NÃO CONECTADO'}`);
+        // ** FIM DOS LOGS DE DIAGNÓSTICO **
+        
+        if (!guild || !channel || channel.type !== ChannelType.GuildVoice) {
+            
+            // Log detalhado da falha
+            if (!guild) {
+                console.error("MOTIVO DA FALHA: Guild não encontrada.");
+            } else if (!interaction.member?.voice) {
+                console.error("MOTIVO DA FALHA: Membro não tem dados de voz (verifique as Guild Intents).");
+            } else if (!channel) {
+                console.error("MOTIVO DA FALHA: Usuário não está em um canal de voz.");
+            } else if (channel.type !== ChannelType.Voice) {
+                console.error(`MOTIVO DA FALHA: Canal encontrado não é de voz (Tipo: ${channel.type}).`);
+            }
+            
             console.error(
-                "❌ Guild ou canal de voz não encontrados ou ID inválido! Verifique os IDs."
+                "❌ Guild ou canal de voz não encontrados ou ID inválido! O usuário deve estar em um canal de voz."
             );
             client.destroy();
+            // Edita a resposta da interação para informar o erro ao usuário
+            await interaction.editReply({ 
+                content: "❌ Você precisa estar em um canal de voz para usar este comando!" 
+            });
             return;
         }
         console.log(`✅ Guild e canal de voz encontrados: ${guild.name} / ${channel.name}`);
@@ -48,9 +86,6 @@ export async function localPlayer(filePath, mediaName, interaction) {
         if (!fs.existsSync(LOCAL_FILE_PATH)) {
             console.error(
                 `❌ Arquivo de áudio não encontrado no caminho: ${LOCAL_FILE_PATH}`
-            );
-            console.error(
-                `Certifique-se de que o arquivo "${filePath}" está na pasta "/data".`
             );
             client.destroy();
             const errorMsg = `❌ Arquivo de áudio não encontrado:\n \`${mediaName}\`.`;
@@ -63,19 +98,53 @@ export async function localPlayer(filePath, mediaName, interaction) {
         let connection = getVoiceConnection(GUILD_ID);
         if (connection) {
             console.log(
-                `⚠️ Conexão existente encontrada (Status: ${connection.state.status}). Destruindo para nova conexão...`
+                `⚠️ Conexão existente encontrada (Status: ${connection.state.status}). Destruindo para nova reprodução...`
             );
+            
+            // Lógica para editar a MENSAGEM ANTERIOR
+            const oldMessageId = await getActivePlayback(GUILD_ID);
+            console.log(`[STATE] Mensagem ativa anterior para Guild ${GUILD_ID}: ${oldMessageId}`);
+            if (oldMessageId) {
+                console.log(`[STATE] Tentando editar a mensagem anterior (ID: ${oldMessageId}) para indicar interrupção...`);
+                try {
+                    // Busca o canal de texto original para editar a mensagem
+                    const textChannel = guild.channels.cache.get(interaction.channelId);
+                    console.log(`[STATE] Canal de texto encontrado: ${textChannel ? textChannel.name : 'NÃO ENCONTRADO'} ${textChannel.type} `);
+                    if (textChannel && textChannel.type === ChannelType.GuildVoice) {
+                        const oldMessage = await textChannel.messages.fetch(oldMessageId);
+                        console.log(`[STATE] Mensagem anterior buscada com sucesso.`);
+                        // Extrai apenas o nome da mídia anterior, ignorando o prefixo de status.
+                        // Assume que a mídia está sempre entre `...` no final da mensagem.
+                        const match = oldMessage.content.match(/`([^`]+)`$/);
+                        const oldMediaName = match ? match[1] : 'Mídia Anterior';
+
+                        await oldMessage.edit({ 
+                            content: `🛑 Reprodução Interrompida: Nova mídia iniciada. \`${oldMediaName}\`` 
+                        });
+                        console.log(`[STATE] ✅ Mensagem anterior (ID: ${oldMessageId}) editada.`);
+                    }
+                } catch (e) {
+                    // Ignora erros de edição se a mensagem foi deletada, etc.
+                    console.error(`[STATE] ❌ Falha ao editar a mensagem anterior (ID: ${oldMessageId}): ${e.message}`);
+                }
+            }
+            // Limpa o estado e destrói a conexão
+            await clearActivePlayback(GUILD_ID);
             connection.destroy();
             connection = undefined;
+            
+        } else {
+            console.log("✅ Nenhuma conexão ativa encontrada. Prosseguindo...");
         }
-        console.log("✅ Nenhuma conexão ativa encontrada. Prosseguindo...");
 
         const connectMsg = `🔊 Conectando ao canal de voz **${channel.name}**...`;
         await interaction.editReply({ content: connectMsg });
+        
         // Tenta conectar ao canal de voz
         try {
+            console.log(`[CONEXÃO] Tentando conectar ao canal ID: ${channel.id} na Guild ID: ${GUILD_ID}`);
             connection = joinVoiceChannel({
-                channelId: CHANNEL_ID,
+                channelId: channel.id, // Usa o ID do canal de voz do usuário
                 guildId: GUILD_ID,
                 adapterCreator: guild.voiceAdapterCreator,
                 selfDeaf: true,
@@ -83,14 +152,19 @@ export async function localPlayer(filePath, mediaName, interaction) {
             console.log("🔊 Tentando conectar ao canal de voz...");
             await entersState(connection, VoiceConnectionStatus.Ready, 10_000);
             console.log("✅ Conexão de voz estabelecida.");
+            
+            // REGISTRA O ID DA MENSAGEM ATUAL no estado APÓS a conexão
+            await setActivePlayback(GUILD_ID, currentMessageId);
+
         } catch (error) {
             console.error(
                 "💥 Erro ao conectar-se ao canal de voz:",
                 error.message
             );
             client.destroy();
-            fsp.unlink(LOCAL_FILE_PATH);
-            console.log(`[CLEANUP] 🗑️ Arquivo deletado após reprodução: ${path.basename(filePath)}`);
+            // Garante que o arquivo baixado seja limpo
+            await fsp.unlink(LOCAL_FILE_PATH).catch(e => console.error(`[CLEANUP] ❌ Falha ao deletar arquivo: ${e.message}`));
+            console.log(`[CLEANUP] 🗑️ Arquivo deletado após falha de conexão: ${path.basename(filePath)}`);
             return;
         }
 
@@ -107,8 +181,11 @@ export async function localPlayer(filePath, mediaName, interaction) {
                 const playMsg = `▶️ Reproduzindo agora: \`${mediaName}\``;
                 interaction.editReply({ content: playMsg });
             });
-            player.on(AudioPlayerStatus.Idle, () => {
+            
+            player.on(AudioPlayerStatus.Idle, async () => {
                 console.log(`🛑 Fim da reprodução de "${filePath}". Desconectando...`);
+                
+                // Desconecta e limpa o estado
                 if (
                     connection &&
                     connection.state.status !== VoiceConnectionStatus.Destroyed
@@ -116,16 +193,19 @@ export async function localPlayer(filePath, mediaName, interaction) {
                     connection.destroy();
                 }
                 client.destroy();
-                const endMsg = `✅ Reprodução concluída: ▶️ \`${mediaName}\``;
-                interaction.editReply({ content: endMsg });
-                fsp.unlink(LOCAL_FILE_PATH);
+                const endMsg = `✅ Reprodução concluída: \`${mediaName}\``;
+                await interaction.editReply({ content: endMsg });
+                
+                // Limpeza final do arquivo e do estado
+                await clearActivePlayback(GUILD_ID);
+                await fsp.unlink(LOCAL_FILE_PATH).catch(e => console.error(`[CLEANUP] ❌ Falha ao deletar arquivo: ${e.message}`));
                 console.log(`[CLEANUP] 🗑️ Arquivo deletado após reprodução: ${path.basename(filePath)}`);
             });
 
-            player.on("error", (error) => {
+            player.on("error", async (error) => {
                 console.error(`❌ Erro no player de áudio:`, error);
                 console.error(
-                    "⚠️ Se este erro persistir, verifique se o FFmpeg está instalado e acessível no seu PATH."
+                    "⚠️ Verifique se o FFmpeg está instalado e acessível no seu PATH."
                 );
                 if (
                     connection &&
@@ -134,7 +214,12 @@ export async function localPlayer(filePath, mediaName, interaction) {
                     connection.destroy();
                 }
                 client.destroy();
+                // Limpeza em caso de erro
+                await clearActivePlayback(GUILD_ID);
+                await fsp.unlink(LOCAL_FILE_PATH).catch(e => console.error(`[CLEANUP] ❌ Falha ao deletar arquivo: ${e.message}`));
+                console.log(`[CLEANUP] 🗑️ Arquivo deletado após erro: ${path.basename(filePath)}`);
             });
+
         } catch (error) {
             console.error("💥 Erro ao criar o recurso de áudio:", error.message);
             if (
@@ -144,8 +229,9 @@ export async function localPlayer(filePath, mediaName, interaction) {
                 connection.destroy();
             }
             client.destroy();
-            fsp.unlink(LOCAL_FILE_PATH);
-            console.log(`[CLEANUP] 🗑️ Arquivo deletado após reprodução: ${path.basename(filePath)}`);
+            await clearActivePlayback(GUILD_ID);
+            await fsp.unlink(LOCAL_FILE_PATH).catch(e => console.error(`[CLEANUP] ❌ Falha ao deletar arquivo: ${e.message}`));
+            console.log(`[CLEANUP] 🗑️ Arquivo deletado após erro de recurso: ${path.basename(filePath)}`);
         }
     });
 
