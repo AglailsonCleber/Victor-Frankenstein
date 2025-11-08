@@ -5,54 +5,11 @@ import {
     Routes, 
     PermissionFlagsBits 
 } from 'discord.js';
-import fs from 'fs/promises'; 
-import path from 'path'; 
-import { fileURLToPath } from 'url';
+// Importação do utilitário centralizado (dois níveis acima)
+import { collectCommands } from '../../utils/slashCommandCollector.js'; 
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.APPLICATION_ID;
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-
-// ====================================================================
-// FUNÇÃO UTILIÁRIA INTERNA: Coletar Comandos Slash
-// ====================================================================
-
-/**
- * Coleta todos os comandos de barra da pasta 'slash'.
- * @param {import('discord.js').Message} message A mensagem de onde o comando foi invocado (para responder em caso de erro).
- * @returns {Promise<{success: boolean, commands?: Array<Object>}>} O array de comandos JSON ou um objeto de erro.
- */
-async function collectSlashCommands(message) {
-    const commands = [];
-    // O caminho é ajustado para ser relativo à pasta 'slash' (um nível acima de 'prefix')
-    const commandsPath = path.join(__dirname, '..', 'slash'); 
-
-    try {
-        const commandFiles = (await fs.readdir(commandsPath)).filter(file => file.endsWith('.js'));
-
-        for (const file of commandFiles) {
-            // Caminho completo do arquivo no formato URL para import()
-            const filePath = `file://${path.join(commandsPath, file)}`;
-            
-            // Importação dinâmica (assíncrona) de comandos ESM
-            const command = await import(filePath); 
-            
-            // Comandos ESM usam exportações nomeadas 'data' e 'execute'
-            if ('data' in command && 'execute' in command) {
-                commands.push(command.data.toJSON());
-            } else {
-                console.warn(`[WARNING] Comando Slash mal formatado: ${file}`);
-            }
-        }
-        return { success: true, commands };
-    } catch (error) {
-        console.error('Erro ao ler comandos slash para deploy:', error);
-        await message.reply('❌ Ocorreu um erro ao ler os arquivos de comandos. (Verifique o caminho da pasta slash)');
-        return { success: false };
-    }
-}
 
 
 // ====================================================================
@@ -64,9 +21,12 @@ export async function deployGuildCommands(message) {
         return message.reply('❌ Você precisa de permissão de Administrador para usar este comando.');
     }
 
-    // 1. Coleta os comandos de barra (/slash)
-    const collection = await collectSlashCommands(message);
-    if (!collection.success) return; // Erro já tratado e respondido na utilitária
+    // 1. Coleta os comandos de barra (/slash) usando o utilitário
+    const collection = await collectCommands();
+    if (!collection.success) {
+         // Responde ao canal com a mensagem de erro da função utilitária
+         return message.reply(collection.message);
+    } 
     const commands = collection.commands;
 
     // 2. Registra na API
@@ -96,9 +56,12 @@ export async function deployGlobalCommands(message) {
         return message.reply('❌ Você precisa de permissão de Administrador para usar este comando.');
     }
     
-    // 1. Coleta os comandos de barra (/slash)
-    const collection = await collectSlashCommands(message);
-    if (!collection.success) return; // Erro já tratado e respondido na utilitária
+    // 1. Coleta os comandos de barra (/slash) usando o utilitário
+    const collection = await collectCommands();
+    if (!collection.success) {
+        // Responde ao canal com a mensagem de erro da função utilitária
+        return message.reply(collection.message);
+    }
     const commands = collection.commands;
 
     // 2. Registra na API
@@ -187,6 +150,5 @@ export const data = {
 };
 
 export async function execute(message, args) {
-    // Nota: Esta função executa quando o comando de prefixo é chamado sem argumentos.
     message.reply({ content: 'Use os comandos de prefixo, como `!deploy-guild-commands` ou `!delete-guild-commands`.', ephemeral: true });
 }

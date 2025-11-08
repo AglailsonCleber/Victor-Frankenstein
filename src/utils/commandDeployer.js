@@ -1,46 +1,15 @@
+// src/utils/commandDeployer.js (ES Module)
+
 import { 
     REST, 
-    Routes, 
+    Routes,
 } from 'discord.js';
-import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { collectCommands } from './slashCommandCollector.js'; 
 
+// Variáveis de ambiente
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.APPLICATION_ID;
 const SERVER_ID = process.env.SERVER_ID; 
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-/**
- * Coleta todos os comandos de barra da pasta 'src/commands/slash'.
- * @returns {Promise<{success: boolean, message?: string, commands?: Array<Object>}>} Array de dados dos comandos em formato JSON.
- */
-async function collectCommands() {
-    const commands = [];
-    const commandsPath = path.join(__dirname, '..', 'commands', 'slash'); 
-
-    try {
-        const commandFiles = (await fs.readdir(commandsPath)).filter(file => file.endsWith('.js'));
-
-        for (const file of commandFiles) {
-            const filePath = `file://${path.join(commandsPath, file)}`;
-            const command = await import(filePath); 
-            
-            if ('data' in command && 'execute' in command) {
-                commands.push(command.data.toJSON());
-            } else {
-                console.warn(`[WARNING] Comando Slash mal formatado: ${file}`);
-            }
-        }
-        return { success: true, commands: commands };
-    } catch (error) {
-        console.error('Erro ao ler comandos slash:', error);
-        return { success: false, message: 'Erro ao ler os arquivos de comandos. (Verifique o caminho da pasta slash)' };
-    }
-}
-
 
 // ====================================================================
 // FUNÇÃO 1: DEPLOY DE COMANDOS NA GUILDA (RÁPIDO)
@@ -56,6 +25,7 @@ export async function deployGuildCommands(client) {
         return { success: false, message: '❌ Variável SERVER_ID não definida no ambiente para deploy de Guilda.' };
     }
 
+    // AQUI: Usa a função importada para coletar comandos
     const collection = await collectCommands();
     if (!collection.success) return { success: false, message: collection.message };
     const commands = collection.commands;
@@ -87,6 +57,7 @@ export async function deployGuildCommands(client) {
  * @returns {Promise<{success: boolean, message: string}>} O resultado da operação.
  */
 export async function deployGlobalCommands(client) {
+    // AQUI: Usa a função importada para coletar comandos
     const collection = await collectCommands();
     if (!collection.success) return { success: false, message: collection.message };
     const commands = collection.commands;
