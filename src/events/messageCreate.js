@@ -28,21 +28,26 @@ export async function execute(message) {
   // Acessamos as funções utilitárias que foram exportadas diretamente no admin.js
   // Os comandos de prefixo 'admin' agora exportam funções separadas:
   const {
-    deployCommands,
-    deleteMyGlobalCommands,
-    deleteMyGuildCommands
+    deployGuildCommands,
+    deployGlobalCommands,
+    deleteGuildCommands,
+    deleteGlobalCommands
   } = adminModule || {}; // Desestrutura com fallback para evitar falha se o admin não carregar
 
-  if (commandName === "deploy-commands" && deployCommands) {
-    return deployCommands(message);
+  if (commandName === "deploy-guild-commands" && deployGuildCommands) {
+    return deployGuildCommands(message);
   }
 
-  if (commandName === "delete-my-global" && deleteMyGlobalCommands) {
-    return deleteMyGlobalCommands(message);
+  if (commandName === "deploy-global-commands" && deployGlobalCommands) {
+    return deployGlobalCommands(message);
   }
 
-  if (commandName === "delete-my-guild" && deleteMyGuildCommands) {
-    return deleteMyGuildCommands(message);
+  if (commandName === "delete-guild-commands" && deleteGuildCommands) {
+    return deleteGuildCommands(message);
+  }
+
+  if (commandName === "delete-global-commands" && deleteGlobalCommands) {
+    return deleteGlobalCommands(message);
   }
 
   // ---------------------------------------------------------------------
