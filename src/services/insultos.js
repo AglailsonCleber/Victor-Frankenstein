@@ -4,10 +4,11 @@ import path from 'path';
 
 /**
  * Função para carregar o JSON e retornar um insulto aleatório.
+ * @returns {Promise<string>} O texto do insulto aleatório ou uma mensagem de erro.
  */
 export async function obterInsultoAleatorio() {
     // 1. Define o caminho do arquivo JSON.
-    // Presume que o arquivo JSON está na mesma pasta do script, chamado 'insultos.json'.
+    // Presume que o arquivo JSON está na pasta 'database' na raiz do projeto.
     const jsonPath = path.join(process.cwd(), './database/insultos.json');
     
     console.log(`Tentando ler o arquivo em: ${jsonPath}`);
@@ -24,7 +25,8 @@ export async function obterInsultoAleatorio() {
             return "Erro: Estrutura JSON inválida ou vazia.";
         }
 
-        // 4. Sua lógica de seleção aleatória:
+        // 4. Lógica de seleção aleatória:
+        // Seleciona um objeto aleatório no array.
         const insultoObjeto = data[Math.floor(Math.random() * data.length)];
         
         // 5. Extrai o texto da chave 'msg'.
@@ -33,8 +35,8 @@ export async function obterInsultoAleatorio() {
         return insultoTexto;
 
     } catch (error) {
-        // Trata erros como "Arquivo não encontrado" ou "JSON mal formatado"
-        console.error("Erro ao processar o arquivo JSON:", error.message);
-        return "Erro: Não foi possível obter o insulto (verifique se o arquivo existe e se está correto).";
+        // Trata erros de ficheiro (não encontrado, permissão, etc.) ou de JSON mal formatado
+        console.error('❌ Erro ao obter insulto aleatório:', error.message);
+        return "Erro: Falha ao carregar a base de dados de insultos.";
     }
 }

@@ -1,4 +1,4 @@
-// src/events/interactionCreate.js (Corrigido para o Handler ESM)
+// src/events/interactionCreate.js (Corrigido para o Handler ESM + Player de Música)
 
 import { 
     InteractionType, 
@@ -9,15 +9,19 @@ import {
     ButtonBuilder,
     ButtonStyle,
     StringSelectMenuBuilder,
-    Events // Importe Events para garantir o nome correto
+    Events, 
+    TextChannel // Importar TextChannel para type check
 } from 'discord.js'; 
 
-// Handlers
+// Handlers e Serviços existentes
 import { startPagination } from '../utils/paginationHandler.js'; 
 import { getGenreList } from '../services/api_tmdb.js'; 
 
+// Handlers e Serviços NOVOS (Player de Música)
+import QueueManager from '../services/QueueManager.js'; 
+import { generatePlayerEmbed } from '../utils/generatePlayerEmbed.js'; 
+
 // --- IDs ÚNICOS para todos os nossos componentes ---
-// ... (IDs mantidos iguais) ...
 const MENU_ID_MAIN = 'menu_select_search_type';
 const BTN_ID_SEARCH_BY_TITLE = 'btn_search_by_title_'; 
 const BTN_ID_SEARCH_BY_GENRE = 'btn_search_by_genre_'; 
@@ -25,137 +29,179 @@ const MENU_ID_GENRE_SELECT = 'menu_select_genre_';
 const MODAL_ID_PREFIX = 'menu_modal_'; 
 const MODAL_INPUT_ID = 'search_query_input';
 
+// NOVOS IDs para o Player de Música (Mapeados em generatePlayerEmbed.js)
+const PLAYER_BTN_PREFIX = 'player_'; 
 
-// --- 1. EXPORTAÇÃO 'data' (Obrigatória para o Handler) ---
-export const data = { 
-    name: Events.InteractionCreate, // Usa o enum oficial para o nome
+// --- EXPORTAÇÃO DE DADOS PARA O HANDLER ---
+export const data = {
+    name: Events.InteractionCreate,
     once: false,
 };
 
-// --- 2. EXPORTAÇÃO 'execute' ---
-export async function execute(interaction) { 
-    
-    // --- 1. Handler para Comandos de Barra (/) ---
+// --- FUNÇÃO DE EXECUÇÃO ---
+export async function execute(interaction) {
+    // ------------------------------------------
+    // 1. DISPATCHER DE COMANDOS DE BARRA (SLASH)
+    // ------------------------------------------
     if (interaction.isChatInputCommand()) {
-        console.log(`[EVENT] ⚙️ Slash Command: /${interaction.commandName} de ${interaction.user.tag}`);
-
-        // NOTA DE CORREÇÃO: O handler de comandos de barra usa client.slashCommands
         const command = interaction.client.slashCommands.get(interaction.commandName);
-        if (!command) return console.error(`[COMMAND ERROR] /${interaction.commandName} não encontrado.`);
+
+        if (!command) {
+            console.error(`Comando /${interaction.commandName} não encontrado.`);
+            return;
+        }
 
         try {
             await command.execute(interaction);
-            console.log(`[COMMAND] 🟢 /${interaction.commandName} executado.`);
         } catch (error) {
-            console.error(`[COMMAND ERROR] 🔴 Erro ao executar /${interaction.commandName}:`, error);
-            const errorMsg = 'Houve um erro ao tentar executar este comando!';
-            if (interaction.replied || interaction.deferred) {
-                await interaction.followUp({ content: errorMsg, ephemeral: true });
+            console.error(error);
+            if (interaction.deferred || interaction.replied) {
+                await interaction.editReply({ 
+                    content: '❌ Ocorreu um erro ao executar este comando!', 
+                    ephemeral: true 
+                }).catch(() => {});
             } else {
-                await interaction.reply({ content: errorMsg, ephemeral: true });
+                await interaction.reply({ 
+                    content: '❌ Ocorreu um erro ao executar este comando!', 
+                    ephemeral: true 
+                }).catch(() => {});
             }
         }
-    } 
-    
-    // --- 2. Handler para Menus de Seleção (Dropdowns) ---
-    else if (interaction.isStringSelectMenu()) {
-        
-        // ---- A. É O MENU PRINCIPAL? (/menu) ----
-        if (interaction.customId === MENU_ID_MAIN) {
-            const searchType = interaction.values[0]; 
+    }
+
+    // ----------------------------------------------------------------------------------
+    // 2. DISPATCHER DE BOTÕES E MENUS (Componentes de Mensagem)
+    // ----------------------------------------------------------------------------------
+    else if (interaction.isButton() || interaction.isAnySelectMenu()) {
+        const customId = interaction.customId;
+
+        // ---------------- A. Handler de Componentes de MÚSICA ----------------
+        if (customId.startsWith(PLAYER_BTN_PREFIX)) {
+            const guildId = interaction.guildId;
+            // Assumindo que client.queueManagers existe e armazena os QueueManager
+            const player = interaction.client.queueManagers?.get(guildId); 
+
+            if (!player || !player.isPlayerActive()) {
+                // Se o player não estiver ativo, desabilita a interação.
+                return interaction.update({ components: [] }).catch(() => interaction.reply({ content: '❌ O player não está mais ativo neste servidor.', ephemeral: true }));
+            }
             
-            // Se for 'pessoa', o fluxo é o antigo (só tem busca por nome)
-            if (searchType === 'person') {
+            // Procura o método correspondente ao ID do botão
+            const command = customId.replace(PLAYER_BTN_PREFIX, ''); // ex: 'skip', 'pause_resume'
+            let response = null;
+
+            // Executa a lógica de controle
+            if (command === 'skip') {
+                player.playNext(); // Chama playNext para pular a faixa atual
+            } else if (command === 'pause_resume') {
+                response = player.togglePauseResume();
+            } else if (command === 'stop') {
+                player.stop(); // Interrompe e destroi a conexão
+                interaction.client.queueManagers.delete(guildId); // Remove o gerenciador
+                await interaction.update({ content: '🛑 Reprodução encerrada.', embeds: [], components: [] });
+                return;
+            } else if (command === 'loop') {
+                response = player.toggleLoop();
+            } else if (command === 'shuffle') {
+                response = player.toggleShuffle();
+            } else if (command === 'queue') {
+                // Comando especial que não usa update, apenas reply efêmero
+                const queueList = player.getQueueList();
+                await interaction.reply({ content: queueList, ephemeral: true });
+                return;
+            }
+
+            // Se houve uma resposta de string (ex: toggleLoop), envia como efêmera
+            if (response && typeof response === 'string') {
+                await interaction.reply({ content: response, ephemeral: true });
+            }
+
+            // Atualiza a mensagem do player após a ação
+            await interaction.update(generatePlayerEmbed(player));
+        }
+        // ---------------- B. Handler de Componentes de TMDB (Filmes/Séries) ----------------
+        else if (customId === MENU_ID_MAIN) {
+            // Handler para o Menu Principal de Pesquisa (pesquisarFilmesSeries.js)
+            const type = interaction.values[0]; // 'movie', 'tv', ou 'person'
+
+            // Se for pessoa, inicia a paginação imediatamente (só busca por título)
+            if (type === 'person') {
+                await interaction.deferUpdate();
                 const modal = new ModalBuilder()
-                    .setCustomId(`${MODAL_ID_PREFIX}${searchType}`) 
-                    .setTitle('Buscar Pessoa');
-                const textInput = new TextInputBuilder()
+                    .setCustomId(MODAL_ID_PREFIX + 'person')
+                    .setTitle('Buscar Pessoa (Ator/Diretor)');
+
+                const nameInput = new TextInputBuilder()
                     .setCustomId(MODAL_INPUT_ID)
-                    .setLabel('Qual o nome você deseja buscar?')
+                    .setLabel('Nome da Pessoa')
                     .setStyle(TextInputStyle.Short)
                     .setRequired(true);
-                
-                modal.addComponents(new ActionRowBuilder().addComponents(textInput));
-                return await interaction.showModal(modal);
+
+                const firstActionRow = new ActionRowBuilder().addComponents(nameInput);
+                modal.addComponents(firstActionRow);
+
+                await interaction.showModal(modal);
+                return; // O restante da lógica de 'person' está no ModalSubmit
             }
 
-            // Se for 'movie' ou 'tv', mostramos os novos botões de escolha
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`${BTN_ID_SEARCH_BY_TITLE}${searchType}`) 
-                    .setLabel('Buscar por Título')
-                    .setStyle(ButtonStyle.Primary)
-                    .setEmoji('📝'),
-                new ButtonBuilder()
-                    .setCustomId(`${BTN_ID_SEARCH_BY_GENRE}${searchType}`) 
-                    .setLabel('Buscar por Gênero')
-                    .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('🎨')
-            );
+            // Para Filme/Série, apresenta a próxima escolha (Título ou Gênero)
+            const titleButton = new ButtonBuilder()
+                .setCustomId(BTN_ID_SEARCH_BY_TITLE + type)
+                .setLabel('Buscar por Título')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('🔎');
 
-            await interaction.reply({
-                content: `Você selecionou **${searchType === 'movie' ? 'Filmes' : 'Séries'}**. Como deseja buscar?`,
+            const genreButton = new ButtonBuilder()
+                .setCustomId(BTN_ID_SEARCH_BY_GENRE + type)
+                .setLabel('Buscar por Gênero')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('🗂️');
+
+            const row = new ActionRowBuilder().addComponents(titleButton, genreButton);
+
+            await interaction.update({
+                content: `Opções de Pesquisa para ${type === 'movie' ? 'Filmes' : 'Séries'}:`,
+                embeds: [], // Remove o embed do menu principal
                 components: [row],
-                ephemeral: true
             });
         }
-
-        // ---- B. É O NOVO MENU DE GÊNEROS? ----
-        else if (interaction.customId.startsWith(MENU_ID_GENRE_SELECT)) {
-            await interaction.deferReply({ ephemeral: true });
-
-            const type = interaction.customId.replace(MENU_ID_GENRE_SELECT, ''); 
-            const genreId = interaction.values[0]; 
+        
+        // Handler para o botão 'Buscar por Título' (Abre o Modal)
+        else if (customId.startsWith(BTN_ID_SEARCH_BY_TITLE)) {
+            const type = customId.replace(BTN_ID_SEARCH_BY_TITLE, ''); // 'movie' ou 'tv'
             
-            // Pega o Nome do Gênero (só para o log, opcional)
-            const genres = await getGenreList(type); 
-            const genreName = genres.find(g => g.id.toString() === genreId)?.name || 'Desconhecido';
-            
-            console.log(`[EVENT] ⚙️ Busca por Gênero: Tipo=${type}, Gênero=${genreName} (ID=${genreId})`);
-
-            // Chama o handler de paginação!
-            await startPagination(interaction, genreId, type, 'genre'); 
-        }
-    } 
-    
-    // --- 3. Handler para Botões ---
-    else if (interaction.isButton()) {
-
-        // ---- A. É O BOTÃO "BUSCAR POR TÍTULO"? ----
-        if (interaction.customId.startsWith(BTN_ID_SEARCH_BY_TITLE)) {
-            const type = interaction.customId.replace(BTN_ID_SEARCH_BY_TITLE, ''); 
-            
-            // Mostra o modal (fluxo antigo)
             const modal = new ModalBuilder()
-                .setCustomId(`${MODAL_ID_PREFIX}${type}`) 
+                .setCustomId(MODAL_ID_PREFIX + type)
                 .setTitle(`Buscar ${type === 'movie' ? 'Filme' : 'Série'} por Título`);
-            const textInput = new TextInputBuilder()
+
+            const titleInput = new TextInputBuilder()
                 .setCustomId(MODAL_INPUT_ID)
-                .setLabel('Qual o título você deseja buscar?')
+                .setLabel('Título da Mídia')
                 .setStyle(TextInputStyle.Short)
                 .setRequired(true);
-            
-            modal.addComponents(new ActionRowBuilder().addComponents(textInput));
+
+            const firstActionRow = new ActionRowBuilder().addComponents(titleInput);
+            modal.addComponents(firstActionRow);
+
             await interaction.showModal(modal);
         }
 
-        // ---- B. É O BOTÃO "BUSCAR POR GÊNERO"? ----
-        else if (interaction.customId.startsWith(BTN_ID_SEARCH_BY_GENRE)) {
-            await interaction.deferUpdate(); 
-            
-            const type = interaction.customId.replace(BTN_ID_SEARCH_BY_GENRE, ''); 
-            
-            try {
-                // 1. Busca a lista de gêneros na API
-                const genres = await getGenreList(type); 
+        // Handler para o botão 'Buscar por Gênero' (Abre o Menu de Seleção de Gêneros)
+        else if (customId.startsWith(BTN_ID_SEARCH_BY_GENRE)) {
+            await interaction.deferUpdate(); // Defer para obter os dados da API sem timeout
 
-                // 2. Formata para o formato do Select Menu
+            const type = customId.replace(BTN_ID_SEARCH_BY_GENRE, ''); // 'movie' ou 'tv'
+
+            try {
+                // Chama o serviço TMDB para obter a lista de gêneros
+                const genres = await getGenreList(type);
+
                 const options = genres.map(genre => ({
                     label: genre.name,
+                    description: `Buscar ${type === 'movie' ? 'Filmes' : 'Séries'} com este gênero.`,
                     value: genre.id.toString(), 
                 }));
 
-                // 3. Cria o Menu
                 const genreMenu = new StringSelectMenuBuilder()
                     .setCustomId(`${MENU_ID_GENRE_SELECT}${type}`) 
                     .setPlaceholder('Selecione um gênero...')
@@ -163,7 +209,6 @@ export async function execute(interaction) {
 
                 const row = new ActionRowBuilder().addComponents(genreMenu);
                 
-                // 4. Responde (editando a mensagem dos botões) com o menu de gêneros
                 await interaction.editReply({
                     content: `Selecione um gênero para ${type === 'movie' ? 'Filmes' : 'Séries'}:`,
                     components: [row],
@@ -176,10 +221,10 @@ export async function execute(interaction) {
         }
     }
 
-    // --- 4. Handler para Envios de Formulário (Modal) ---
+    // --- 3. Handler para Envios de Formulário (Modal) e Outras Interações ---
     else if (interaction.isModalSubmit()) {
         
-        // Verifica se é o nosso modal de busca por TÍTULO ou PESSOA
+        // Lógica de Submissão de Modal para Pesquisa por Título (TMDB)
         if (interaction.customId.startsWith(MODAL_ID_PREFIX)) {
             await interaction.deferReply({ ephemeral: true }); 
 
@@ -188,8 +233,36 @@ export async function execute(interaction) {
 
             console.log(`[EVENT] ⚙️ Modal Submit (Título): Tipo=${searchType}, Busca="${searchQuery}"`);
 
-            // Chama o handler de paginação!
-            await startPagination(interaction, searchQuery, searchType, 'title'); 
+            // Inicia o processo de paginação com o resultado da busca
+            await startPagination(interaction, searchQuery, searchType, 'title');
         }
+        
+        // (Aqui viria o handler para o Modal de "Pular Página" do paginationHandler.js)
+        // ...
     }
+    
+    // ----------------------------------------------------------------------------------
+    // 4. Handler de Paginação (Gênero)
+    // ----------------------------------------------------------------------------------
+    // Deve ser um Select Menu que inicia a paginação (e não apenas o menu principal)
+    else if (interaction.isStringSelectMenu() && interaction.customId.startsWith(MENU_ID_GENRE_SELECT)) {
+        await interaction.deferReply({ ephemeral: true });
+
+        const searchType = interaction.customId.replace(MENU_ID_GENRE_SELECT, ''); // 'movie' ou 'tv'
+        const genreId = interaction.values[0]; // ID do gênero
+
+        console.log(`[EVENT] ⚙️ Select Menu (Gênero): Tipo=${searchType}, Gênero ID="${genreId}"`);
+
+        // Inicia o processo de paginação com o ID do gênero
+        // Passa o ID do gênero como 'query' e o modo como 'genre'
+        await startPagination(interaction, genreId, searchType, 'genre');
+    }
+
+    // ----------------------------------------------------------------------------------
+    // 5. Outras interações (Select Menus e Botões de Paginação/Player)
+    // ----------------------------------------------------------------------------------
+    // Todas as outras interações (botões de paginação, etc.) seriam tratadas aqui
+    // Se o customId for tratado no paginationHandler.js, ele deve ser chamado aqui.
+    // Exemplo: if (customId.startsWith('page_')) { paginationHandler.handle(interaction); }
+    // A complexidade indica que o paginationHandler.js lida com os botões internos de paginação.
 }

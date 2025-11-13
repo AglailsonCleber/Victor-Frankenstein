@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
+// Define __dirname (necessário para resolver caminhos em ES Modules)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -18,17 +19,19 @@ export async function loadEvents(client) {
     const eventsDir = path.join(__dirname, '..', 'events');
 
     try {
+        // 1. Lê todos os arquivos .js no diretório 'events'
         const eventFiles = (await fs.readdir(eventsDir)).filter(file => file.endsWith('.js'));
 
         for (const file of eventFiles) {
             const filePath = path.join(eventsDir, file);
-            // Converte o caminho do sistema de arquivos para URL (necessário para import() dinâmico)
+            // 2. Converte o caminho do sistema de arquivos para URL (necessário para import() dinâmico)
             const fileUrl = pathToFileURL(filePath).href;
 
             try {
-                // Importação dinâmica (assíncrona)
+                // 3. Importação dinâmica (assíncrona)
                 const event = await import(fileUrl);
 
+                // 4. Verificação de Estrutura
                 // Eventos ESM devem ter 'export const data' e 'export async function execute'
                 if ('data' in event && 'execute' in event) {
                     const eventName = event.data.name;
@@ -39,10 +42,13 @@ export async function loadEvents(client) {
                         continue; // Pula para o próximo arquivo
                     }
 
+                    // 5. Registro do Listener
                     if (isOnce) {
+                        // client.once: Executa apenas uma vez (ex: 'ready')
                         client.once(eventName, (...args) => event.execute(client, ...args));
                     } else {
-                        // Assumindo que a função execute em eventos tem a assinatura correta
+                        // client.on: Executa todas as vezes que o evento ocorrer (ex: 'messageCreate', 'interactionCreate')
+                        // A função execute deve receber os argumentos corretos para o evento
                         client.on(eventName, (...args) => event.execute(...args));
                     }
 

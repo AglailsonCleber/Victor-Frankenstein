@@ -1,12 +1,24 @@
+// src/utils/playbackStateManager.js (ES Module)
+
 import fsp from 'fs/promises';
 import path from 'path';
 
+// Caminho para o arquivo de estado. Fica dentro da pasta 'data'.
 const STATE_FILE = path.join(process.cwd(), 'data', 'playback_state.json');
 
+// ----------------------------------------------------------------------
+// TIPAGEM (Apenas para documentação)
+// ----------------------------------------------------------------------
 /**
  * @typedef {Object.<string, {messageId: string}>} PlaybackState
  * Estado da reprodução, mapeando Guild ID para o ID da mensagem de status ativa.
  */
+// ----------------------------------------------------------------------
+
+
+// ----------------------------------------------------------------------
+// FUNÇÕES AUXILIARES DE LEITURA/ESCRITA
+// ----------------------------------------------------------------------
 
 /**
  * Carrega o estado de reprodução persistido no arquivo JSON.
@@ -22,6 +34,7 @@ async function loadState() {
             // Cria a pasta 'data' se não existir
             const dataDir = path.dirname(STATE_FILE);
             try {
+                // Tenta criar a pasta /data
                 await fsp.mkdir(dataDir, { recursive: true });
             } catch (e) {
                 // Ignora se a pasta já existe
@@ -35,7 +48,7 @@ async function loadState() {
 
 /**
  * Salva o estado atual no arquivo JSON.
- * @param {PlaybackState} state O estado de reprodução a ser salvo.
+ * @param {PlaybackState} state O objeto de estado a ser salvo.
  * @returns {Promise<void>}
  */
 async function saveState(state) {
@@ -45,6 +58,11 @@ async function saveState(state) {
         console.error("❌ Erro ao salvar o estado de reprodução:", error.message);
     }
 }
+
+
+// ----------------------------------------------------------------------
+// FUNÇÕES PRINCIPAIS DE GESTÃO DO ESTADO
+// ----------------------------------------------------------------------
 
 /**
  * Define qual mensagem de interação está ativa para um servidor.
@@ -76,7 +94,7 @@ export async function clearActivePlayback(guildId) {
 /**
  * Obtém o ID da mensagem de status ativa para um servidor.
  * @param {string} guildId O ID do servidor.
- * @returns {Promise<string | null>} O ID da mensagem ou null.
+ * @returns {Promise<string | null>} O ID da mensagem ou null se não houver.
  */
 export async function getActivePlayback(guildId) {
     const state = await loadState();
