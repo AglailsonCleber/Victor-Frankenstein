@@ -9,14 +9,14 @@ import {
     TextInputBuilder,
     TextInputStyle,
     InteractionType, // Importado corretamente
-} from "discord.js"; 
+} from "discord.js";
 import {
     searchMovieByTitle,
     searchTvByTitle,
     searchPersonByName,
     discoverByGenre,
     getWatchProviders,
-} from "../services/api_tmdb.js"; 
+} from "../services/api_tmdb.js";
 
 // --- IDs Genéricos (não mudam) ---
 const PREV_RESULT_ID = "page_prev_res";
@@ -93,7 +93,7 @@ function buildEmbedAndComponents(data, currentResultIndex, currentPage, searchTy
     const overview = result.overview || result.biography || 'Sem descrição disponível.';
     const imageUrl = result.poster_path || result.profile_path ? `https://image.tmdb.org/t/p/w500${result.poster_path || result.profile_path}` : null;
     const genreNames = result.genre_ids ? result.genre_ids.map(id => `*ID: ${id}*`).join(', ') : 'N/A';
-    
+
     // Calcula o índice global para o rodapé
     const globalResultIndex = (currentPage - 1) * MAX_RESULTS_PER_PAGE + (currentResultIndex + 1);
 
@@ -115,7 +115,7 @@ function buildEmbedAndComponents(data, currentResultIndex, currentPage, searchTy
             { name: '🏷️ Gêneros (IDs)', value: genreNames, inline: false },
         );
     }
-    
+
     // --- Criação dos Botões de Navegação ---
     const row1 = new ActionRowBuilder()
         .addComponents(
@@ -124,22 +124,22 @@ function buildEmbedAndComponents(data, currentResultIndex, currentPage, searchTy
                 .setLabel("⬅️ Resultado")
                 .setStyle(ButtonStyle.Secondary)
                 // Desabilitado se for o primeiro resultado da primeira página
-                .setDisabled(globalResultIndex === 1), 
+                .setDisabled(globalResultIndex === 1),
 
             new ButtonBuilder()
                 .setCustomId(NEXT_RESULT_ID)
                 .setLabel("Resultado ➡️")
                 .setStyle(ButtonStyle.Secondary)
                 // Desabilitado se for o último resultado da última página
-                .setDisabled(globalResultIndex === totalResults), 
-                
+                .setDisabled(globalResultIndex === totalResults),
+
             new ButtonBuilder()
                 .setCustomId(FINISH_BUTTON_ID)
                 .setLabel("Finalizar Busca")
                 .setStyle(ButtonStyle.Danger)
                 .setEmoji("🛑"),
         );
-        
+
     const row2 = new ActionRowBuilder()
         .addComponents(
             new ButtonBuilder()
@@ -160,7 +160,7 @@ function buildEmbedAndComponents(data, currentResultIndex, currentPage, searchTy
                 .setStyle(ButtonStyle.Primary)
                 .setDisabled(currentPage === totalPages),
         );
-        
+
     const row3 = new ActionRowBuilder()
         .addComponents(
             // Botão "Onde Assistir" só para filmes/séries
@@ -197,16 +197,16 @@ function buildEmbedAndComponents(data, currentResultIndex, currentPage, searchTy
  * @param {string} [searchMode='title'] 'title' para busca por título/nome, ou 'genre' para descoberta por gênero.
  */
 export async function startPagination(interaction, query, searchType, searchMode = 'title') {
-    
+
     // --- 1. Estado Inicial ---
     let currentPage = 1;
     let currentResultIndex = 0;
-    
+
     let searchFunction = getSearchFunction(searchType, searchMode);
-    
+
     let tmdbData;
     let firstReply;
-    
+
     try {
         // 2. Busca inicial
         tmdbData = await searchFunction(query, currentPage);
@@ -218,10 +218,10 @@ export async function startPagination(interaction, query, searchType, searchMode
                 ephemeral: true,
             });
         }
-        
+
         // 3. Renderiza a primeira página
         const initialState = buildEmbedAndComponents(tmdbData, currentResultIndex, currentPage, searchType);
-        
+
         // A interação inicial já está deferida (await interaction.deferReply() em interactionCreate.js)
         firstReply = await interaction.editReply({
             content: `Pesquisa por ${searchMode === 'genre' ? 'Gênero' : 'Título'} iniciada!`,
@@ -237,7 +237,7 @@ export async function startPagination(interaction, query, searchType, searchMode
             ephemeral: true,
         });
     }
-    
+
     // ------------------------------------------------------------------------------------------------------
     // COLLECTOR DE INTERAÇÕES (O Coração da Paginação)
     // ------------------------------------------------------------------------------------------------------
@@ -250,9 +250,9 @@ export async function startPagination(interaction, query, searchType, searchMode
             return false;
         }
         // Apenas botões de navegação ou modais
-        return i.customId && 
-               (i.customId.startsWith("page_") || 
-                i.customId === FINISH_BUTTON_ID || 
+        return i.customId &&
+            (i.customId.startsWith("page_") ||
+                i.customId === FINISH_BUTTON_ID ||
                 i.customId === BTN_ID_JUMP_TO_PAGE ||
                 i.customId === BTN_ID_PROVIDERS ||
                 i.customId === BTN_ID_PUBLISH ||
@@ -265,26 +265,26 @@ export async function startPagination(interaction, query, searchType, searchMode
         time: TIMEOUT_DURATION,
         // idle: 5 * 60 * 1000, 
     });
-    
+
     // Função para atualizar e enviar a nova mensagem
     const updateMessage = async (i) => {
         const newState = buildEmbedAndComponents(tmdbData, currentResultIndex, currentPage, searchType);
         // CORREÇÃO: Usamos editReply porque a interação (i) é deferida
         await i.editReply(newState);
     };
-    
+
     // --- Lógica de Interação ---
     collector.on("collect", async (i) => {
         // Garante que a interação de componente seja deferida (para dar tempo de processar)
         if (i.isMessageComponent() && !i.deferred && !i.replied) {
-             await i.deferUpdate();
+            await i.deferUpdate();
         }
-        
+
         let shouldUpdate = false;
-        
+
         // A. Botões de Navegação de Resultado (Próximo/Anterior)
         if (i.customId === NEXT_RESULT_ID || i.customId === PREV_RESULT_ID) {
-            
+
             // Verifica se está no limite do array (MAX_RESULTS_PER_PAGE é o tamanho do array results)
             if (i.customId === NEXT_RESULT_ID && currentResultIndex < tmdbData.results.length - 1) {
                 currentResultIndex++;
@@ -293,30 +293,30 @@ export async function startPagination(interaction, query, searchType, searchMode
                 currentResultIndex--;
                 shouldUpdate = true;
             } else {
-                 // Nenhuma ação, pois está no limite
+                // Nenhuma ação, pois está no limite
             }
-            
-        // B. Botões de Navegação de Página (Próxima/Anterior)
+
+            // B. Botões de Navegação de Página (Próxima/Anterior)
         } else if (i.customId === NEXT_PAGE_ID || i.customId === PREV_PAGE_ID) {
-            
+
             let newPage = currentPage;
             if (i.customId === NEXT_PAGE_ID && currentPage < tmdbData.total_pages) {
                 newPage++;
             } else if (i.customId === PREV_PAGE_ID && currentPage > 1) {
                 newPage--;
             }
-            
+
             // Só faz a chamada da API se a página mudou
             if (newPage !== currentPage) {
                 currentPage = newPage;
                 currentResultIndex = 0; // Volta para o primeiro resultado da nova página
-                
+
                 // Recarrega os dados da API para a nova página
                 tmdbData = await searchFunction(query, currentPage);
                 shouldUpdate = true;
             }
-            
-        // C. Botão Pular para Página (Abre Modal)
+
+            // C. Botão Pular para Página (Abre Modal)
         } else if (i.customId === BTN_ID_JUMP_TO_PAGE) {
             const modal = new ModalBuilder()
                 .setCustomId(MODAL_ID_JUMP)
@@ -336,30 +336,34 @@ export async function startPagination(interaction, query, searchType, searchMode
             // i.showModal() é a resposta para o botão, NÃO precisa de deferUpdate antes
             await i.showModal(modal);
             return; // Interrompe para não fazer update desnecessário
-            
-        // D. Botão Onde Assistir (Providers)
+
+            // D. Botão Onde Assistir (Providers)
         } else if (i.customId === BTN_ID_PROVIDERS) {
             // Garante que o estado está correto
             const currentItem = tmdbData.results[currentResultIndex];
             if (currentItem) {
                 // Chama a função da API para buscar os provedores
                 const providerEmbed = await getWatchProviders(searchType, currentItem.id, currentItem.title || currentItem.name);
-                
+
                 // Edita a mensagem para mostrar o embed de provedores
                 await i.editReply({
                     content: '🌐 Informações de Streaming:',
                     embeds: [providerEmbed],
                     // Mantém os botões da paginação para voltar
-                    components: firstReply.components, 
+                    components: firstReply.components,
                 });
             }
             return; // Interrompe para não fazer update desnecessário
-            
-        // E. Botão Publicar
+
+            // E. Botão Publicar
         } else if (i.customId === BTN_ID_PUBLISH) {
             // Torna a mensagem pública e a finaliza
             const currentState = buildEmbedAndComponents(tmdbData, currentResultIndex, currentPage, searchType);
-            
+
+            await i.channel.send({
+                content: `A pedido de ${i.user}, aqui está:`,
+                embeds: currentState.embeds,
+            });
             // i.editReply() é usado, pois a interação já foi deferida (i.deferUpdate)
             await i.editReply({
                 content: `✅ Resultado publicado por ${i.user}:`,
@@ -368,19 +372,19 @@ export async function startPagination(interaction, query, searchType, searchMode
                 ephemeral: false, // Torna pública
             });
             collector.stop('finished_by_user'); // Finaliza a busca
-            return; 
-            
-        // F. Botão Finalizar
+            return;
+
+            // F. Botão Finalizar
         } else if (i.customId === FINISH_BUTTON_ID) {
             collector.stop("finished_by_user");
-            return; 
-            
-        } 
-        
+            return;
+
+        }
+
         // Se houve alteração de página ou resultado, atualiza a mensagem
         if (shouldUpdate) {
             // i.editReply() é chamado dentro de updateMessage()
-            await updateMessage(i); 
+            await updateMessage(i);
         }
     });
 
@@ -396,7 +400,7 @@ export async function startPagination(interaction, query, searchType, searchMode
                 )
             )
         );
-        
+
         // Edita a mensagem para a versão final/desabilitada
         await interaction
             .editReply({
@@ -404,7 +408,7 @@ export async function startPagination(interaction, query, searchType, searchMode
                     reason === "finished_by_user"
                         ? "✅ Busca finalizada."
                         : "Tempo esgotado. Busca finalizada.",
-                embeds: finalState.embeds,
+                embeds: [],
                 components: disabledComponents,
             })
             .catch(() => {

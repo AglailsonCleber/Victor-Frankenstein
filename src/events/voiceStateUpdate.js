@@ -100,7 +100,7 @@ export async function execute(oldState, newState) {
     // 3. Se o canal de texto correspondente for encontrado
     if (textChannel) {
       const message =
-        `📢 **${member.user.tag}** acabou de entrar no canal de voz **${voiceChannel.name}**! Junte-se a ele!`;
+        `📢 **${member.user}** acabou de entrar no canal de voz **${voiceChannel.name}**! @here Junte-se a ele!`;
 
       try {
         await textChannel.send(message);
