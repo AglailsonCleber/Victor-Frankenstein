@@ -8,6 +8,7 @@ import {
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
+    InteractionType, // Importado corretamente
 } from "discord.js"; 
 import {
     searchMovieByTitle,
@@ -211,6 +212,7 @@ export async function startPagination(interaction, query, searchType, searchMode
         tmdbData = await searchFunction(query, currentPage);
 
         if (!tmdbData || tmdbData.total_results === 0) {
+            // A interação inicial já deve estar deferida pelo interactionCreate.js
             return interaction.editReply({
                 content: `❌ Não foram encontrados resultados para a busca: **${query}**`,
                 ephemeral: true,
@@ -261,20 +263,20 @@ export async function startPagination(interaction, query, searchType, searchMode
     const collector = firstReply.createMessageComponentCollector({
         filter,
         time: TIMEOUT_DURATION,
-        // Ignora botões não esperados (embora o filtro de ID já cuide disso)
         // idle: 5 * 60 * 1000, 
     });
     
     // Função para atualizar e enviar a nova mensagem
     const updateMessage = async (i) => {
         const newState = buildEmbedAndComponents(tmdbData, currentResultIndex, currentPage, searchType);
-        await i.update(newState);
+        // CORREÇÃO: Usamos editReply porque a interação (i) é deferida
+        await i.editReply(newState);
     };
     
     // --- Lógica de Interação ---
     collector.on("collect", async (i) => {
-        // Garante que a interação seja tratada (update ou reply) em 3s
-        if (!i.deferred && !i.replied && i.type === InteractionType.MessageComponent) {
+        // Garante que a interação de componente seja deferida (para dar tempo de processar)
+        if (i.isMessageComponent() && !i.deferred && !i.replied) {
              await i.deferUpdate();
         }
         
@@ -291,7 +293,7 @@ export async function startPagination(interaction, query, searchType, searchMode
                 currentResultIndex--;
                 shouldUpdate = true;
             } else {
-                 // Lógica de mudança de página (se o array estourar ou zerar) - não deve acontecer aqui, mas por segurança.
+                 // Nenhuma ação, pois está no limite
             }
             
         // B. Botões de Navegação de Página (Próxima/Anterior)
@@ -331,6 +333,7 @@ export async function startPagination(interaction, query, searchType, searchMode
             modal.addComponents(row);
 
             // Responde à interação do botão abrindo o modal
+            // i.showModal() é a resposta para o botão, NÃO precisa de deferUpdate antes
             await i.showModal(modal);
             return; // Interrompe para não fazer update desnecessário
             
@@ -357,6 +360,7 @@ export async function startPagination(interaction, query, searchType, searchMode
             // Torna a mensagem pública e a finaliza
             const currentState = buildEmbedAndComponents(tmdbData, currentResultIndex, currentPage, searchType);
             
+            // i.editReply() é usado, pois a interação já foi deferida (i.deferUpdate)
             await i.editReply({
                 content: `✅ Resultado publicado por ${i.user}:`,
                 embeds: currentState.embeds,
@@ -373,13 +377,10 @@ export async function startPagination(interaction, query, searchType, searchMode
             
         } 
         
-        // Lógica para Tratar Modal de Pular Página (Ocorre no interactionCreate.js, mas a lógica de re-renderização é aqui)
-        // Isso é tratado no interactionCreate, que chama startPagination de novo. 
-        // No entanto, se o Modal for processado AQUI (o que não é o ideal), a lógica ficaria:
-        // else if (i.isModalSubmit() && i.customId === MODAL_ID_JUMP) { ... }
-        
+        // Se houve alteração de página ou resultado, atualiza a mensagem
         if (shouldUpdate) {
-            await updateMessage(i);
+            // i.editReply() é chamado dentro de updateMessage()
+            await updateMessage(i); 
         }
     });
 

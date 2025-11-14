@@ -1,8 +1,10 @@
 // src/events/voiceStateUpdate.js
 
-import { Events, ChannelType } from 'discord.js'; // Importação do ChannelType
+import { Events, ChannelType } from 'discord.js';
+import { getVoiceConnection } from '@discordjs/voice';
+import { deleteLocalFile } from '../utils/fileCleanup.js';
 
-// 1. EXPORT DE DADOS
+// 1. EXPORT DE DADOS DO EVENTO
 export const data = {
   name: Events.VoiceStateUpdate,
   once: false,
@@ -10,18 +12,64 @@ export const data = {
 
 // 2. EXPORT DA FUNÇÃO EXECUTE
 /**
- * @param {import('discord.js').VoiceState} oldState - O estado de voz anterior.
- * @param {import('discord.js').VoiceState} newState - O novo estado de voz.
+ * Lida com o evento VoiceStateUpdate, verificando a desconexão do bot e o esvaziamento do canal,
+ * garantindo a limpeza dos arquivos locais.
+ * @param {import('discord.js').VoiceState} oldState O estado de voz anterior.
+ * @param {import('discord.js').VoiceState} newState O estado de voz atual.
  */
 export async function execute(oldState, newState) {
-  console.log(`[EVENTO VOZ] Detected voice state update for user ${newState.member.user.tag}.`);
+  const guildId = oldState.guild.id;
+  // Acessa o QueueManager (player) e a conexão de voz existente
+  const player = oldState.client.queueManagers?.get(guildId);
+  const connection = getVoiceConnection(guildId);
 
-  // --- Lógica de Detecção de Entrada ---
-  // A condição verifica se:
-  // 1. O usuário NÃO estava em um canal (`!oldState.channelId`).
-  // 2. E AGORA ESTÁ em um canal (`newState.channelId`).
-  if (!oldState.channelId && newState.channelId) {
+  // --- 1. Lógica de Interrupção/Desconexão (Bot Removido ou Deixou o Canal) ---
 
+  // Condição: O membro que mudou o estado é o próprio bot
+  if (oldState.member.user.id === oldState.client.user.id) {
+    // Bot saiu do canal (oldState tinha channelId, newState não tem)
+    if (oldState.channelId && !newState.channelId) {
+      console.log(`[VOICE] ❌ Bot desconectado de ${oldState.channel.name}. Iniciando limpeza.`);
+
+      // Usa o método player.stop() para limpar player, fila e deletar arquivos
+      if (player) {
+        await player.stop();
+        oldState.client.queueManagers.delete(guildId);
+      }
+      return;
+    }
+  }
+
+  // --- 2. Lógica de "Canal Vazio" ---
+  // Condição: O bot está conectado, mas alguém saiu do canal
+  if (connection && oldState.channelId) {
+    const channel = oldState.channel || newState.channel;
+
+    // Verifica se o canal é válido (apenas voz)
+    if (channel && channel.type === ChannelType.GuildVoice) {
+      // Filtra apenas membros humanos (que não são bots)
+      const humanMembers = channel.members.filter(m => !m.user.bot);
+
+      // Se não há mais membros humanos no canal
+      if (humanMembers.size === 0) {
+        if (player) {
+          console.log(`[VOICE] ⚠️ Canal vazio. Desconectando e limpando arquivos.`);
+          // Usa o método stop() para limpeza total (incluindo arquivos)
+          player.stop();
+          oldState.client.queueManagers.delete(guildId);
+        } else {
+          // Se o QueueManager já foi limpo, mas a conexão persistiu
+          connection.destroy();
+        }
+        return;
+      }
+    }
+  }
+
+  // --- 3. Lógica de Notificação de Entrada (CORRIGIDA) ---
+  // Verifica se um usuário entrou em um canal de voz onde antes não estava
+  if (!oldState.channelId && newState.channelId && newState.member.user.id !== newState.client.user.id) {
+    
     // Ignora atualizações de bots para evitar loops e mensagens indesejadas
     if (newState.member?.user.bot) return;
 
@@ -61,10 +109,6 @@ export async function execute(oldState, newState) {
         console.error(`[ERRO VOZ] ❌ Não foi possível enviar mensagem para #${textChannel.name}.`, error);
       }
     }
-  }
 
-  // --- Lógica de Detecção de Saída do Bot (Música) ---
-  // Esta lógica não está explicitada aqui, mas geralmente é adicionada para:
-  // 1. Verificar se o BOT foi kickado do canal de voz.
-  // 2. Parar a música e limpar o QueueManager.
+  }
 }

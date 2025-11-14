@@ -3,32 +3,38 @@
 import { Events, Collection } from "discord.js";
 import QueueManager from '../services/QueueManager.js';
 import MediaTrack from '../models/MediaTrack.js';
-// É necessário importar a função de Admin para desestruturar os métodos
-// Assumindo que o admin.js usa `deployGuildCommands`, etc.
-// NOTA: O seu código original parece assumir que o 'admin.js' está na Collection prefixCommands, 
-// o que permite esta desestruturação.
 
-// --- EXPORTAÇÃO DE DADOS PARA O HANDLER ---
+// --- EXPORTAÇÃO DE DADOS PARA O HANDLER ---\r\n
 export const data = {
   name: Events.MessageCreate,
   once: false,
 };
 
-// --- FUNÇÃO DE EXECUÇÃO ---\
+// --- FUNÇÃO DE EXECUÇÃO ---\r\n
 /**
- * @param {import('discord.js').Message} message - O objeto Message do Discord.
+ * Lida com mensagens de texto para comandos de prefixo e música.
+ * @param {import('discord.js').Message} message O objeto de mensagem recebido.
  */
 export async function execute(message) {
   const prefix = "!";
 
-  // 1. Filtragem rápida
+  // 1. Verificações básicas e extração de comando/args
   if (message.author.bot || !message.content.startsWith(prefix) || !message.guild || !message.member) return;
 
   const [commandName, ...args] = message.content.slice(prefix.length).trim().split(/ +/);
   const command = commandName.toLowerCase();
   const guildId = message.guild.id;
 
-  // --- 1. TENTATIVA DE EXECUTAR COMANDOS ADMINISTRATIVOS ESPECIAIS (Deploy/Delete) ---
+  // Garante que a coleção de QueueManagers existe no client
+  if (!message.client.queueManagers) {
+    // Isso deve ser inicializado em index.js, mas garante que não quebre
+    message.client.queueManagers = new Collection(); 
+  }
+  
+  // Obtém o manager para o servidor atual
+  let player = message.client.queueManagers.get(guildId);
+  
+  // Lógica para comandos de Admin (Prefixos)
   const adminModule = message.client.prefixCommands?.get("admin");
   const {
     deployGuildCommands,
@@ -37,7 +43,8 @@ export async function execute(message) {
     deleteGlobalCommands
   } = adminModule || {};
 
-  switch (commandName) {
+  switch (command) {
+    // Comandos Admin (Chamadas diretas da função exportada em src/commands/prefix/admin.js)
     case "deploy-guild-commands":
       if (deployGuildCommands) return deployGuildCommands(message);
       break;
@@ -50,53 +57,34 @@ export async function execute(message) {
     case "delete-global-commands":
       if (deleteGlobalCommands) return deleteGlobalCommands(message);
       break;
-  }
-
-  // --- 2. TENTATIVA DE EXECUTAR COMANDOS DO PLAYER DE MÚSICA (Exemplo: !play, !skip) ---
-  // A. Obtém ou cria o QueueManager
-  let player = message.client.queueManagers?.get(guildId);
-
-  // Se o bot não tem um map de QueueManagers, cria um temporário
-  if (!message.client.queueManagers) {
-    message.client.queueManagers = new Collection();
-  }
-  
-  if (!player) {
-    // Se o comando for para começar a tocar, cria um novo player
-    if (command === 'play') {
-      player = new QueueManager(message.guild);
-      message.client.queueManagers.set(guildId, player);
-    } else {
-      // Se não houver player ativo e o comando não for 'play', ignora os comandos de player
-      // ou envia um aviso
-      if (['skip', 'pause', 'resume', 'stop', 'queue', 'loop', 'shuffle'].includes(command)) {
-        message.reply("❌ Não há nenhuma música tocando ou fila ativa.");
-        return;
-      }
-    }
-  }
-
-  // B. Switch para comandos de player
-  switch (command) {
+    
+    // Comandos de Música (Prefixos - Exemplo Simplificado)
     case 'play':
-      // A lógica do 'play' aqui é um DUMMY para demonstração no código de prefixo
-      // e não usa o sistema de download complexo do /reproduzir.
-      // A lógica real de reprodução de áudio deve ser implementada aqui, 
-      // ou o bot deve ser direcionado a usar o comando /reproduzir.
+      // 1. Verifica/cria o player
+      if (!player) {
+          if (!message.member.voice.channelId) {
+            return message.reply('❌ Você precisa estar em um canal de voz para tocar música!');
+          }
+          player = new QueueManager(message.guild);
+          message.client.queueManagers.set(guildId, player);
+      }
       
-      // Exemplo de como funcionaria o `!play` simples:
-      // Apenas adiciona uma faixa dummy para testar o QueueManager
+      // 2. Define o canal de texto
+      player.textChannel = message.channel; 
+      
+      // 3. Lógica de dados e criação de MediaTrack (MOCKUP/Simplificado)
       const dummyTrack = new MediaTrack(
         args.join(' ') || 'Música de Exemplo Padrão', // Usa args como título
-        'https://fakeurl.com/stream',
-        180,
+        'https://fakeurl.com/stream', // URL fictícia para demonstração
+        180, // Duração fictícia
         message.author.tag
       );
 
+      // 4. Adiciona e Inicia
       player.addTrack(dummyTrack);
-      player.start(message.member, message.channel); // member para obter o canal de voz
+      player.start(message.member, message.channel); // Inicia a conexão de voz
       message.reply(`Adicionado à fila: **${dummyTrack.title}**`);
-      return; // Termina aqui
+      return; 
 
     case 'skip':
     case 'pause':
@@ -105,29 +93,36 @@ export async function execute(message) {
     case 'queue':
     case 'loop':
     case 'shuffle':
-      // Executa o método correspondente do player
-      if (player && player[command]) {
-        const result = player[command](); // Chama player.skip(), player.pause(), etc.
+      // 1. Verifica se o player existe
+      if (!player) {
+        return message.reply('❌ Não há música tocando.');
+      }
+      
+      // 2. Executa o método correspondente do player
+      if (player[command]) {
+        const result = player[command](); 
+        
         if (typeof result === 'string') {
-          message.reply(result); // Envia a resposta de métodos como toggleLoop/Shuffle e getQueueList
+          message.reply(result); // Respostas como "Música pausada", "Fila vazia", etc.
+        } 
+        
+        // 3. Lógica específica para o 'stop'
+        if (command === 'stop') {
+          message.client.queueManagers.delete(guildId);
         }
       }
-      if (command === 'stop') {
-        // Limpa o manager se o comando for 'stop'
-        message.client.queueManagers.delete(guildId);
-      }
-      return; // Termina aqui
+      return; 
   }
 
-  // --- 3. LÓGICA NORMAL PARA OUTROS COMANDOS DE PREFIXO ---\
+  // --- 3. LÓGICA NORMAL PARA OUTROS COMANDOS DE PREFIXO ---\r\n
   const prefixCommand = message.client.prefixCommands?.get(command);
 
-  if (!prefixCommand) return; // Se não for admin, música ou comando prefixo não existente
+  if (!prefixCommand) return; // Se não for um comando conhecido
 
   try {
     await prefixCommand.execute(message, args);
   } catch (error) {
-    console.error(error);
-    message.reply('❌ Ocorreu um erro ao executar este comando de prefixo!');
+    console.error(`❌ Erro ao executar o comando de prefixo !${command}:`, error);
+    message.reply('❌ Ocorreu um erro ao executar este comando!').catch(() => {});
   }
 }

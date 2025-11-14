@@ -1,104 +1,93 @@
-// src/utils/generatePlayerEmbed.js (ou em uma pasta 'embeds')
+// src/utils/generatePlayerEmbed.js
 
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-// Assumindo que o MediaTrack é importado corretamente para acessar os métodos de formatação
-import MediaTrack from '../models/MediaTrack.js'; 
-import QueueManager from '../services/QueueManager.js'; 
+// Não é necessário importar MediaTrack/QueueManager, pois o JSDoc já o faz
 
-// --- IDs de Botões (Devem ser únicos e consistentes com o interactionCreate.js) ---
-const BTN_SKIP = 'player_skip';
-const BTN_PAUSE_RESUME = 'player_pause_resume';
-const BTN_STOP = 'player_stop';
-const BTN_QUEUE = 'player_queue';
-const BTN_LOOP = 'player_loop';
-const BTN_SHUFFLE = 'player_shuffle';
-// ----------------------------------------------------------------------------------
-
+// --- IDs ÚNICOS para os botões (Devem coincidir com interactionCreate.js) ---
+const BTN_ID_SKIP = 'player_skip';
+const BTN_ID_PAUSE_RESUME = 'player_pause_resume';
+const BTN_ID_STOP = 'player_stop';
+const BTN_ID_QUEUE = 'player_queue';
+const BTN_ID_LOOP = 'player_loop';
+const BTN_ID_SHUFFLE = 'player_shuffle';
+// --------------------------------------------------------------------------
 
 /**
- * Gera um Embed com as informações da faixa atual e botões de controlo do player.
- * @param {QueueManager} player O gerenciador de fila do bot para o servidor.
+ * Gera um Embed com as informações da faixa atual e botões de controle do player.
+ * @param {import('../services/QueueManager.js').default} player O gerenciador de fila do bot para o servidor.
  * @returns {{embeds: EmbedBuilder[], components: ActionRowBuilder[]}} Objeto com o embed e os componentes.
  */
 export function generatePlayerEmbed(player) {
     const currentTrack = player.currentTrack;
     const queueLength = player.queue.length;
-    // O status pode ser 'playing', 'paused', 'autopaused', 'idle' (conforme documentação @discordjs/voice)
-    const isPlaying = player.audioPlayer?.state?.status === 'playing';
-
+    // O status pode ser 'playing', 'paused', 'idle', 'buffering'
+    const isPlaying = player.audioPlayer.state.status === 'playing' || player.audioPlayer.state.status === 'buffering';
+    const isPaused = player.audioPlayer.state.status === 'paused';
+    const hasTrack = !!currentTrack;
+    
+    // --- 1. O Embed ---
     const embed = new EmbedBuilder()
-        .setColor('#0099ff')
-        .setTitle(currentTrack ? `🎶 Tocando Agora: ${currentTrack.title}` : 'Sem música tocando')
-        .setDescription(currentTrack ? 
-            `**Duração:** ${currentTrack.getFormattedDuration()}\n` +
-            `**Solicitado por:** ${currentTrack.requestedBy}` : 
+        .setColor(hasTrack ? '#0099ff' : '#aaaaaa')
+        .setTitle(hasTrack ? `🎶 Tocando Agora: ${currentTrack.title}` : '🛑 Sem música tocando')
+        .setDescription(hasTrack ? 
+            `**Duração:** ${currentTrack.getFormattedDuration()}` + 
+            `\n**Solicitado por:** ${currentTrack.requestedBy}` +
+            (isPaused ? '\n\n**⏸️ MÚSICA PAUSADA**' : '')
+            :
             'Adicione músicas à fila usando `/reproduzir <URL/termo>`'
         )
-        // Se houver uma miniatura, usa-a
-        .setThumbnail(currentTrack?.thumbnail || null)
-        .setFooter({ 
-            text: `Próximas na fila: ${queueLength} | Loop: ${player.isLooping ? '✅ Ativo' : '❌ Desativado'} | Shuffle: ${player.isShuffling ? '✅ Ativo' : '❌ Desativado'}` 
-        })
-        .setTimestamp(); // Adiciona o timestamp para mostrar quando foi atualizado
+        .setThumbnail(hasTrack ? currentTrack.thumbnail : null)
+        .setFooter({ text: `Próximas na fila: ${queueLength} | Loop: ${player.isLooping ? '✅' : '❌'} | Shuffle: ${player.isShuffling ? '✅' : '❌'}` })
+        .setTimestamp(); // Adiciona o timestamp para indicar a última atualização
 
-    // ----------------------------------------------------------------
-    // LINHA 1: Controles Principais
-    // ----------------------------------------------------------------
+    // --- 2. Os Componentes (Botões) ---
     
+    // Linha 1: Controles básicos
     const row1 = new ActionRowBuilder()
         .addComponents(
-            // Botão Pular (Skip)
             new ButtonBuilder()
-                .setCustomId(BTN_SKIP)
+                .setCustomId(BTN_ID_SKIP)
                 .setLabel('Pular')
                 .setStyle(ButtonStyle.Secondary)
-                .setEmoji('⏭️'),
+                .setEmoji('⏭️')
+                .setDisabled(!hasTrack), 
             
-            // Botão Pausar/Resumir (Muda de cor e texto dependendo do estado)
             new ButtonBuilder()
-                .setCustomId(BTN_PAUSE_RESUME)
+                .setCustomId(BTN_ID_PAUSE_RESUME)
                 .setLabel(isPlaying ? 'Pausar' : 'Resumir')
                 .setStyle(isPlaying ? ButtonStyle.Primary : ButtonStyle.Success)
-                .setEmoji(isPlaying ? '⏸️' : '▶️'),
-                
-            // Botão Parar (Stop)
+                .setEmoji(isPlaying ? '⏸️' : '▶️')
+                .setDisabled(!hasTrack),
+            
             new ButtonBuilder()
-                .setCustomId(BTN_STOP)
+                .setCustomId(BTN_ID_STOP)
                 .setLabel('Parar')
                 .setStyle(ButtonStyle.Danger)
-                .setEmoji('🛑'),
+                .setEmoji('🛑')
+                .setDisabled(!hasTrack),
                 
-            // Botão Fila (Queue)
             new ButtonBuilder()
-                .setCustomId(BTN_QUEUE)
-                .setLabel('Fila')
+                .setCustomId(BTN_ID_QUEUE)
+                .setLabel(`Fila (${queueLength})`) 
                 .setStyle(ButtonStyle.Secondary)
                 .setEmoji('📜'),
         );
-    
-    // ----------------------------------------------------------------
-    // LINHA 2: Opções de Fila
-    // ----------------------------------------------------------------
-
+        
+    // Linha 2: Controles de modo
     const row2 = new ActionRowBuilder()
         .addComponents(
-            // Botão Loop
             new ButtonBuilder()
-                .setCustomId(BTN_LOOP)
-                .setLabel(player.isLooping ? 'Loop Ativo' : 'Ativar Loop')
-                // Se estiver ativo, use uma cor diferente para feedback visual
+                .setCustomId(BTN_ID_LOOP)
+                .setLabel(player.isLooping ? 'Desativar Loop' : 'Ativar Loop')
                 .setStyle(player.isLooping ? ButtonStyle.Success : ButtonStyle.Secondary)
                 .setEmoji('🔁'),
-            
-            // Botão Shuffle
             new ButtonBuilder()
-                .setCustomId(BTN_SHUFFLE)
-                .setLabel(player.isShuffling ? 'Shuffle Ativo' : 'Ativar Shuffle')
+                .setCustomId(BTN_ID_SHUFFLE)
+                .setLabel(player.isShuffling ? 'Desativar Shuffle' : 'Ativar Shuffle')
                 .setStyle(player.isShuffling ? ButtonStyle.Success : ButtonStyle.Secondary)
                 .setEmoji('🔀'),
         );
 
-    // Retorna o Embed e as linhas de botões (Actions Rows)
     return {
         embeds: [embed],
         components: [row1, row2],

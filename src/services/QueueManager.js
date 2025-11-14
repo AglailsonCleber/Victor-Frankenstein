@@ -1,4 +1,4 @@
-// QueueManager.js (Versão Final Corrigida)
+// src/services/QueueManager.js (Versão FINAL com Limpeza, Loop Corrigido e Streaming)
 
 import { 
     joinVoiceChannel, 
@@ -11,255 +11,363 @@ import {
     VoiceConnectionDisconnectReason
 } from '@discordjs/voice';
 import { Guild, GuildMember, TextChannel } from 'discord.js';
+import path from 'path'; 
+import ytdl from 'ytdl-core'; // << NECESSÁRIO para streaming
 
 // Assumindo que estes caminhos estão corretos
 import MediaTrack from '../models/MediaTrack.js'; 
 import { generatePlayerEmbed } from '../utils/generatePlayerEmbed.js'; 
+import { deleteLocalFile } from '../utils/fileCleanup.js';
 
-// --- Função Fictícia (Substitua pela lógica real de extração de stream) ---
+// --------------------------------------------------------------------------
+// Constantes e Funções Auxiliares
+// --------------------------------------------------------------------------
+const DATA_DIR = path.join(process.cwd(), 'data'); 
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
 /**
- * **ATENÇÃO:** Esta é uma função de substituição. 
- * Na implementação real, você usará ytdl-core ou yt-dlp para criar um stream de áudio 
- * a partir da 'url' da faixa.
- * @param {string} url A URL da faixa de mídia.
- * @returns {Promise<import('@discordjs/voice').AudioResource>} O recurso de áudio.
+ * Cria um recurso de áudio a partir do caminho do arquivo local.
+ * @param {string} filename O nome do arquivo local (ex: 'Artista - Titulo.mp3').
+ * @returns {import('@discordjs/voice').AudioResource}
  */
-const getAudioStream = async (url) => {
-    console.log(`[INFO] Buscando stream para: ${url}`);
-    // Na sua implementação real, o localPlayer.js baixava para 'data/'. 
-    // Para um sistema de fila eficiente, o ideal é usar um stream direto.
-    // O recurso abaixo é um placeholder para demonstrar a estrutura.
-    // Exemplo de como um stream real deveria ser implementado:
-    // return createAudioResource(ytdl(url, { filter: 'audioonly' }), { inlineVolume: true });
+const getAudioResourceFromFile = (filename) => {
+    if (!filename) throw new Error("Nome do arquivo não fornecido para recurso de áudio.");
+    const fullPath = path.join(DATA_DIR, filename);
+    console.log(`[INFO] Criando recurso de áudio do arquivo: ${fullPath}`);
+    return createAudioResource(fullPath, { inlineVolume: true }); 
+};
+
+/**
+ * Cria um recurso de áudio a partir de um stream do YouTube.
+ * @param {string} url A URL de onde o stream deve ser puxado.
+ * @returns {import('@discordjs/voice').AudioResource}
+ */
+const getAudioResourceFromStream = (url) => {
+    console.log(`[INFO] Streaming de áudio da URL: ${url}`);
     
-    // Placeholder: O `localPlayer.js` usava um arquivo local. Mantendo o placeholder 
-    // para a estrutura, embora a implementação real use streams.
-    return createAudioResource('data/audio.mp3', { inlineVolume: true }); 
+    const stream = ytdl(url, { 
+        filter: 'audioonly', 
+        dlChunkSize: 0, 
+        highWaterMark: 1 << 25 // Aumenta o buffer para estabilidade
+    });
+    
+    return createAudioResource(stream, { inlineVolume: true }); 
 };
 // --------------------------------------------------------------------------
 
-/**
- * Gerencia a fila de músicas, a conexão de voz e o player de áudio para um servidor.
- */
 export default class QueueManager {
     /**
      * @param {Guild} guild O objeto Guild (servidor) do Discord.
      */
     constructor(guild) {
         this.guild = guild;
-        this.queue = []; // Array de objetos MediaTrack
+        this.queue = []; 
         this.currentTrack = null;
-        this.connection = null; // VoiceConnection
-        this.audioPlayer = null; // AudioPlayer
-        this.textChannel = null; // Canal de texto para onde enviar mensagens
-        this.playerMessage = null; // Mensagem do player que será atualizada
+        this.connection = null; 
+        this.textChannel = null; 
+        this.playerMessage = null;
         this.isLooping = false;
         this.isShuffling = false;
-        this.isStopping = false;
-    }
-    
-    // ===================================================================
-    // MÉTODOS DE CONTROLE DA FILA
-    // ===================================================================
-
-    /**
-     * Adiciona uma faixa à fila.
-     * @param {MediaTrack} track A faixa a ser adicionada.
-     */
-    addTrack(track) {
-        this.queue.push(track);
-    }
-    
-    /**
-     * Inicia a reprodução (conecta e toca a primeira faixa, se houver).
-     * @param {GuildMember} member O membro que solicitou a faixa (para obter o canal de voz).
-     * @param {TextChannel} channel O canal de texto para enviar a mensagem do player.
-     * @returns {Promise<string>} Mensagem de status.
-     */
-    async start(member, channel) {
-        if (!member.voice.channel) {
-            return '❌ Você precisa estar em um canal de voz.';
-        }
         
-        if (this.connection && this.connection.state.status !== VoiceConnectionStatus.Destroyed) {
-             // Se já estiver conectado, apenas retorna uma mensagem de fila
-             return `🎶 Adicionado à fila: **${this.queue[this.queue.length - 1].title}**`;
-        }
-        
-        this.textChannel = channel;
         this.audioPlayer = createAudioPlayer({
             behaviors: {
                 noSubscriber: NoSubscriberBehavior.Pause,
             },
         });
         
-        // 1. Conecta ao canal de voz
-        this.connection = joinVoiceChannel({
-            channelId: member.voice.channel.id,
-            guildId: this.guild.id,
-            adapterCreator: this.guild.voiceAdapterCreator,
+        this._setupPlayerListeners(); 
+    }
+
+    /**
+     * Configura os ouvintes de evento do AudioPlayer.
+     */
+    _setupPlayerListeners() {
+        // Lógica de FINISH (Ao finalizar a faixa)
+        this.audioPlayer.on(AudioPlayerStatus.Idle, async () => {
+            console.log(`[PLAYER] 🎧 Faixa terminada: ${this.currentTrack?.title}`);
+            
+            // 1. LIMPEZA DO ARQUIVO LOCAL DA FAIXA FINALIZADA
+            // Só deleta se for arquivo local E NÃO estiver em loop
+            if (this.currentTrack && this.currentTrack.filePath && !this.isLooping) {
+                await deleteLocalFile(this.currentTrack.filePath);
+            }
+
+            // 2. CORREÇÃO DE LOOP: currentTrack SÓ É LIMPO SE NÃO FOR PARA REPETIR.
+            if (!this.isLooping) {
+                this.currentTrack = null;
+            }
+            
+            this.playNext(); // Chama playNext para continuar a fila
         });
 
-        try {
-            await entersState(this.connection, VoiceConnectionStatus.Ready, 5000);
-            this.connection.subscribe(this.audioPlayer);
-            console.log(`[QUEUE] ✅ Conectado e Player subscrito no Guild ${this.guild.id}.`);
+        // Lógica de ERRO
+        this.audioPlayer.on('error', async (error) => {
+            console.error(`[PLAYER] ❌ Erro no AudioPlayer (${this.currentTrack?.title}): ${error.message}`);
             
-            this.setupPlayerListeners(); // Configura os eventos de áudio
-            this.setupConnectionListeners(); // Configura os eventos de conexão
-            
-            this.playNext(); // Inicia a reprodução
-            
-            // Retorna uma mensagem genérica de que está iniciando
-            return `🚀 Iniciando reprodução...`; 
-
-        } catch (error) {
-            console.error(`[QUEUE ERROR] ❌ Falha ao conectar/entrar no estado READY: ${error.message}`);
-            this.destroy(); // Limpa em caso de falha na conexão
-            return `❌ Falha ao conectar no canal de voz: ${error.message}`;
-        }
-    }
-
-    /**
-     * Toca a próxima faixa na fila.
-     */
-    async playNext() {
-        if (this.isStopping) return; // Se o bot foi parado, não faz nada
-        
-        let nextTrack = null;
-
-        // Lógica de loop e shuffle
-        if (this.isLooping && this.currentTrack) {
-            nextTrack = this.currentTrack; // Toca a mesma faixa
-        } else if (this.queue.length > 0) {
-            
-            if (this.isShuffling) {
-                // Seleciona uma faixa aleatória e a remove da fila
-                const randomIndex = Math.floor(Math.random() * this.queue.length);
-                nextTrack = this.queue.splice(randomIndex, 1)[0];
-            } else {
-                // Toca a próxima na fila (FIFO)
-                nextTrack = this.queue.shift();
+            // 1. LIMPEZA DO ARQUIVO LOCAL EM CASO DE ERRO
+            if (this.currentTrack && this.currentTrack.filePath) {
+                await deleteLocalFile(this.currentTrack.filePath);
             }
-        }
-        
-        // Se não houver mais faixas para tocar
-        if (!nextTrack) {
-            this.textChannel?.send('⏹️ Fila de reprodução vazia. Desconectando em 5 minutos.');
+            
             this.currentTrack = null;
-            this.updatePlayerMessage();
-            this.timeout = setTimeout(() => this.destroy(), 300000); // 5 minutos = 300000 ms
-            return;
-        }
-        
-        // Limpa o timeout de destruição
-        if (this.timeout) clearTimeout(this.timeout);
-        
-        this.currentTrack = nextTrack;
+            this.playNext(); // Tenta a próxima faixa
+        });
 
-        // Tenta buscar o stream e tocar
-        try {
-            // Este é o passo crucial: substitua o placeholder pelo stream real
-            const resource = await getAudioStream(nextTrack.url);
-            this.audioPlayer.play(resource);
-            
-            // Lógica de envio/atualização da mensagem do player:
-            if (this.playerMessage) {
-                // Se já existe, atualiza
-                await this.updatePlayerMessage();
-            } else if (this.textChannel) {
-                // Se NÃO existe (primeira reprodução), envia
-                const { embeds, components } = generatePlayerEmbed(this);
-                this.playerMessage = await this.textChannel.send({ embeds, components });
-            }
-        } catch (error) {
-            this.textChannel?.send(`❌ Erro ao tocar ${nextTrack.title}. Pulando...`);
-            this.currentTrack = null; // Limpa a faixa com erro
-            this.playNext(); // Tenta tocar a próxima faixa
-        }
+        // Lógica de Conexão (opcional, mas bom para debug)
+        this.audioPlayer.on(AudioPlayerStatus.Playing, () => {
+             console.log(`[PLAYER] ▶️ Tocando agora: ${this.currentTrack?.title}`);
+             this.updatePlayerMessage();
+        });
+
+        // Eventos da conexão (opcional, mas bom para debug)
+        this.connection?.on(VoiceConnectionStatus.Disconnected, async (oldState, newState) => {
+             // O tratamento de desconexão abrupta (kickado/canal vazio) é melhor feito
+             // no evento voiceStateUpdate.js 
+        });
     }
-    
+
     /**
-     * Atualiza o embed do player com o estado e as faixas atuais.
+     * Conecta o bot ao canal de voz e inicia a reprodução.
+     * @param {GuildMember} member O membro que solicitou a reprodução.
+     * @param {TextChannel} textChannel O canal de texto para enviar mensagens.
      */
-    async updatePlayerMessage() {
-        if (!this.playerMessage || !this.currentTrack) return;
-        
-        try {
-            const { embeds, components } = generatePlayerEmbed(this);
-            await this.playerMessage.edit({ embeds, components });
-        } catch (error) {
-            console.error(`[QUEUE ERROR] Falha ao atualizar a mensagem do player: ${error.message}`);
-            // Se a mensagem não puder ser editada, tentamos enviar uma nova no canal de texto
-            if (this.textChannel) {
-                const { embeds, components } = generatePlayerEmbed(this);
-                this.playerMessage = await this.textChannel.send({ embeds, components }).catch(e => null);
-            } else {
-                 this.playerMessage = null;
+    async start(member, textChannel) {
+        if (!member.voice.channel) {
+            return '❌ Você deve estar em um canal de voz para usar este comando.';
+        }
+
+        if (!this.connection) {
+            this.connection = joinVoiceChannel({
+                channelId: member.voice.channel.id,
+                guildId: member.guild.id,
+                adapterCreator: member.guild.voiceAdapterCreator,
+                selfDeaf: true,
+            });
+
+            // Aguarda a conexão ficar pronta
+            try {
+                await entersState(this.connection, VoiceConnectionStatus.Ready, 5_000);
+            } catch (error) {
+                console.error(`[VOICE] ❌ Falha ao conectar ao canal de voz: ${error.message}`);
+                this.connection?.destroy();
+                this.connection = null;
+                return '❌ Não foi possível conectar ao canal de voz. Tente novamente.';
             }
         }
-    }
-    
-    // ===================================================================
-    // MÉTODOS DE CONTROLE DO PLAYER
-    // ===================================================================
-
-    /** Pausa/Resume o player */
-    togglePauseResume() {
-        if (!this.audioPlayer) return '❌ O player não está ativo.';
         
+        this.textChannel = textChannel;
+        this.connection.subscribe(this.audioPlayer);
+
+        if (!this.currentTrack && this.queue.length > 0) {
+            this.playNext();
+        }
+        return `✅ Conectado ao canal de voz **${member.voice.channel.name}**!`;
+    }
+
+    /**
+     * Adiciona uma nova faixa à fila e tenta iniciar a reprodução.
+     * @param {MediaTrack} track A faixa de mídia a ser adicionada.
+     */
+    addTrack(track) {
+        this.queue.push(track);
+        console.log(`[QUEUE] ➕ Faixa adicionada: ${track.title}`);
+
+        if (this.audioPlayer.state.status === AudioPlayerStatus.Idle && this.connection) {
+            this.playNext();
+        } else {
+            this.updatePlayerMessage();
+        }
+    }
+
+    /**
+     * Alterna o estado de pausa/retomar.
+     * @returns {string} Mensagem de status.
+     */
+    togglePause() {
+        if (!this.currentTrack) {
+            return '❌ Não há música tocando.';
+        }
+
         if (this.audioPlayer.state.status === AudioPlayerStatus.Playing) {
             this.audioPlayer.pause();
             this.updatePlayerMessage();
-            return '⏸️ Player Pausado.';
+            return '⏸️ Música pausada.';
         } else if (this.audioPlayer.state.status === AudioPlayerStatus.Paused) {
             this.audioPlayer.unpause();
             this.updatePlayerMessage();
-            return '▶️ Player Retomado.';
+            return '▶️ Música retomada.';
         }
-        return 'O player não está no estado Pausado ou Tocando.';
-    }
-
-    /** Pula a faixa atual */
-    skip() {
-        if (this.audioPlayer && this.currentTrack) {
-            const skippedTitle = this.currentTrack.title;
-            // Emite o evento Idle forçando o player a chamar playNext()
-            this.audioPlayer.emit(AudioPlayerStatus.Idle); 
-            return `⏭️ Pulando: **${skippedTitle}**`;
-        }
-        return '❌ Nenhuma faixa para pular.';
-    }
-
-    /** Interrompe a reprodução e destrói o player/conexão */
-    stop() {
-        this.isStopping = true;
-        this.destroy();
-        return '🛑 Reprodução interrompida e player destruído.';
-    }
-    
-    /** Alterna o modo de loop */
-    toggleLoop() {
-        this.isLooping = !this.isLooping;
-        this.updatePlayerMessage();
-        return this.isLooping ? '🔁 Loop ativado (repetirá a faixa atual).' : 'Loop desativado.';
-    }
-    
-    /** Alterna o modo shuffle */
-    toggleShuffle() {
-        this.isShuffling = !this.isShuffling;
-        this.updatePlayerMessage();
-        return this.isShuffling ? '🔀 Shuffle ativado (próxima faixa será aleatória).' : 'Shuffle desativado.';
+        return '❌ Estado de reprodução inválido.';
     }
     
     /**
-     * Retorna a lista da fila formatada.
+     * Pula a faixa atual. (Garante a exclusão do arquivo local da faixa pulada).
+     * @returns {string} Mensagem de status.
+     */
+    skip() {
+        if (!this.connection || !this.currentTrack) {
+            return '❌ Não há música tocando para pular.';
+        }
+        
+        const skippedTrackTitle = this.currentTrack.title;
+        
+        // Desativa o loop para garantir que a próxima faixa seja puxada da fila
+        this.isLooping = false; 
+        
+        // 1. LIMPEZA DO ARQUIVO LOCAL DA FAIXA PULADA
+        // Chamada direta para garantir exclusão imediata. (Ignorado se for streaming)
+        if (this.currentTrack.filePath) {
+            deleteLocalFile(this.currentTrack.filePath); 
+        }
+
+        this.audioPlayer.stop(); // Isso irá forçar o estado para Idle e iniciar a próxima
+        return `⏭️ Faixa pulada: **${skippedTrackTitle}**.`;
+    }
+
+    /**
+     * Para a reprodução, destrói a conexão e limpa a fila. 
+     * (Garante a exclusão de todos os arquivos: atual e da fila).
+     * @returns {string} Mensagem de status.
+     */
+    async stop() {
+        if (!this.connection) {
+            return '❌ O bot não está em um canal de voz.';
+        }
+        
+        // 1. LIMPA O PLAYER: Isso libera o bloqueio do arquivo atual
+        // Este é o passo CRUCIAL que faltava ser executado antes da limpeza.
+        this.audioPlayer.stop(); // <--- CHAME O STOP AQUI!
+        await sleep(500);
+        // 2. Limpa a faixa atual e deleta o arquivo (Ignorado se for streaming)
+        if (this.currentTrack && this.currentTrack.filePath) {
+            // O arquivo agora deve estar desbloqueado pelo stop acima
+            deleteLocalFile(this.currentTrack.filePath); 
+        }
+
+        // 3. Limpa a fila e deleta todos os arquivos
+        this.queue.forEach(track => {
+            if (track.filePath) {
+                deleteLocalFile(track.filePath);
+            }
+        });
+        
+        // 4. Limpa a conexão
+        this.connection.destroy();
+        
+        // 5. Limpa o estado da fila
+        this.queue = [];
+        this.currentTrack = null;
+        this.connection = null;
+        this.isLooping = false;
+        this.isShuffling = false;
+        
+        // 6. Deleta a mensagem do player
+        this.playerMessage?.delete().catch(() => {}); 
+        this.playerMessage = null;
+
+        return '🛑 Reprodução interrompida e canal liberado. Arquivos locais limpos.';
+    }
+    
+    /**
+     * Remove uma faixa específica da fila pelo ID e deleta o arquivo.
+     * @param {string} trackId O ID da faixa a ser removida.
+     * @returns {string} Mensagem de status.
+     */
+    removeTrack(trackId) {
+        const index = this.queue.findIndex(t => t.id === trackId);
+
+        if (index === -1) {
+            return '❌ Faixa não encontrada na fila.';
+        }
+
+        const removedTrack = this.queue.splice(index, 1)[0];
+        
+        // 1. LIMPEZA DO ARQUIVO LOCAL DA FAIXA REMOVIDA (Ignorado se for streaming)
+        if (removedTrack.filePath) {
+            deleteLocalFile(removedTrack.filePath);
+        }
+        
+        this.updatePlayerMessage();
+        return `🗑️ Faixa **${removedTrack.title}** removida da fila.`;
+    }
+
+    /**
+     * Toca a próxima faixa na fila. (Suporta arquivo local OU streaming).
+     */
+    async playNext() {
+        let nextTrack = null;
+
+        if (this.isLooping && this.currentTrack) {
+            // Se estiver em loop, currentTrack já foi mantido pelo listener 'Idle'
+            nextTrack = this.currentTrack;
+        } else if (this.queue.length > 0) {
+            // Lógica de shuffle ou FIFO
+            if (this.isShuffling) {
+                const randomIndex = Math.floor(Math.random() * this.queue.length);
+                nextTrack = this.queue.splice(randomIndex, 1)[0];
+            } else {
+                nextTrack = this.queue.shift(); 
+            }
+        }
+        
+        if (!nextTrack) {
+            this.audioPlayer.stop(); 
+            this.updatePlayerMessage();
+            this.textChannel?.send('✅ Fila vazia! Reprodução finalizada.');
+            // Destrói a conexão após 30s se ninguém interagir
+            setTimeout(() => {
+                if (this.connection) {
+                    this.connection.destroy();
+                    this.connection = null;
+                }
+            }, 30000); 
+            return;
+        }
+
+        this.currentTrack = nextTrack; // Define o novo currentTrack
+
+        try {
+            let resource;
+            // <<<< LÓGICA ARQUIVO LOCAL VS. STREAMING >>>>
+            if (nextTrack.filePath) {
+                // Modo /reproduzir (Arquivo Local)
+                resource = getAudioResourceFromFile(nextTrack.filePath);
+            } else {
+                // Modo /stream (Streaming Direto)
+                resource = getAudioResourceFromStream(nextTrack.url);
+            }
+
+            this.audioPlayer.play(resource);
+            
+            // Única lógica de envio/atualização da mensagem do player:
+            if (this.playerMessage) {
+                await this.updatePlayerMessage();
+            } else if (this.textChannel) {
+                const { embeds, components } = generatePlayerEmbed(this);
+                this.playerMessage = await this.textChannel.send({ embeds, components });
+            }
+
+        } catch (error) {
+            this.textChannel?.send(`❌ Erro ao tocar ${nextTrack.title}. Pulando...`);
+            
+            // 1. LIMPEZA DO ARQUIVO LOCAL APÓS FALHA DE REPRODUÇÃO (Ignorado se for streaming)
+            if (nextTrack.filePath) {
+                await deleteLocalFile(nextTrack.filePath);
+            }
+            
+            this.currentTrack = null; 
+            this.playNext(); // Tenta a próxima
+        }
+    }
+    
+    /**
+     * Retorna a lista de faixas formatada (para o comando /queue ou botão).
      */
     getQueueList() {
         let response = '';
 
         if (this.currentTrack) {
-            response += `**▶️ Tocando Agora:** [${this.currentTrack.getFormattedDuration()}] ${this.currentTrack.title}\n---\n`;
+            response += `**▶️ Tocando Agora:** [${this.currentTrack.getFormattedDuration()}] ${this.currentTrack.title} (Solicitado por: ${this.currentTrack.requestedBy})\n---\n`;
         }
 
         if (this.queue.length === 0) {
@@ -276,102 +384,47 @@ export default class QueueManager {
         response += `**Próximas na Fila (${this.queue.length} total):**\n${list}`;
 
         if (this.queue.length > 10) {
-            response += `\n... Mais ${this.queue.length - 10} faixas.`;
+            response += `\n...e mais ${this.queue.length - 10} faixas.`;
         }
-        
+
         return response;
     }
-    
-    // ===================================================================
-    // LISTENERS E LIMPEZA
-    // ===================================================================
 
     /**
-     * Configura os listeners de áudio (principalmente para fim de faixa).
+     * Alterna o estado de loop.
+     * @returns {string} Mensagem de status.
      */
-    setupPlayerListeners() {
-        this.audioPlayer.on('error', (error) => {
-            console.error(`[PLAYER ERROR] 💥 Erro no player de áudio: ${error.message}`);
-            this.textChannel?.send(`❌ Erro crítico no player. Pulando a faixa atual.`);
-            // Força a transição para Idle para tentar tocar a próxima
-            this.audioPlayer.emit(AudioPlayerStatus.Idle); 
-        });
-
-        // Quando a faixa atual termina, toca a próxima
-        this.audioPlayer.on(AudioPlayerStatus.Idle, () => {
-             console.log(`[PLAYER] ⏹️ Faixa finalizada.`);
-             this.playNext();
-        });
-        
-        // Atualiza a mensagem quando o estado muda (ex: Pausado, Tocando)
-        this.audioPlayer.on(AudioPlayerStatus.Playing, () => this.updatePlayerMessage());
-        this.audioPlayer.on(AudioPlayerStatus.Paused, () => this.updatePlayerMessage());
-    }
-    
-    /**
-     * Configura os listeners da conexão de voz (para desconexão).
-     */
-    setupConnectionListeners() {
-        this.connection.on(VoiceConnectionStatus.Disconnected, async (oldState, newState) => {
-            console.log(`[VOICE] Desconectado por: ${newState.reason}`);
-            
-            // Tenta reconectar em caso de erro da rede do Discord
-            if (newState.reason === VoiceConnectionDisconnectReason.WebSocketCloseAndRejoin || 
-                newState.reason === VoiceConnectionDisconnectReason.Error) {
-                
-                try {
-                    await entersState(this.connection, VoiceConnectionStatus.Ready, 5000);
-                    console.log('[VOICE] ✅ Reconectado com sucesso.');
-                } catch (error) {
-                    console.log('[VOICE] ❌ Falha na reconexão. Destruindo.');
-                    this.destroy(); // Destrói se a reconexão falhar
-                }
-            } else {
-                // Outras razões de desconexão (ex: movido para outro canal, bot kickado)
-                this.destroy();
-            }
-        });
+    toggleLoop() {
+        this.isLooping = !this.isLooping;
+        this.isShuffling = false; // Desativa shuffle se ativar loop
+        this.updatePlayerMessage();
+        return this.isLooping ? '🔁 Loop ativado! A faixa atual repetirá.' : '↩️ Loop desativado.';
     }
 
     /**
-     * Destrói a conexão de voz, o player e limpa o estado.
-     * Esta função é chamada ao parar o bot ou após o timeout.
+     * Alterna o estado de shuffle (reprodução aleatória).
+     * @returns {string} Mensagem de status.
      */
-    destroy() {
-        this.queue = [];
-        this.currentTrack = null;
-        this.isStopping = true;
-        
-        if (this.timeout) clearTimeout(this.timeout);
-        
-        if (this.audioPlayer) {
-            this.audioPlayer.stop();
-            this.audioPlayer = null;
-        }
+    toggleShuffle() {
+        this.isShuffling = !this.isShuffling;
+        this.isLooping = false; // Desativa loop se ativar shuffle
+        this.updatePlayerMessage();
+        return this.isShuffling ? '🔀 Shuffle ativado! A fila será embaralhada a cada faixa.' : '➡️ Shuffle desativado.';
+    }
 
-        if (this.connection) {
-            this.connection.destroy();
-            this.connection = null;
-        }
-        
-        // Envia a mensagem de "Player parado"
-        if (this.playerMessage) {
+    /**
+     * Atualiza a mensagem incorporada do player.
+     */
+    async updatePlayerMessage() {
+        if (this.playerMessage && this.playerMessage.editable) {
             try {
-                 this.playerMessage.edit({ 
-                    embeds: [{ 
-                        title: '🛑 Player Parado', 
-                        description: 'Fui desligado. Use `!play` para reiniciar.' 
-                    }], 
-                    components: [] 
-                }).catch(() => null); // Ignora erro de edição
+                const { embeds, components } = generatePlayerEmbed(this);
+                await this.playerMessage.edit({ embeds, components });
             } catch (error) {
-                // ...
+                // Se o bot não conseguir editar (ex: mensagem foi deletada manualmente)
+                console.warn(`[PLAYER] ⚠️ Falha ao atualizar mensagem do player: ${error.message}`);
+                this.playerMessage = null; // Limpa a referência
             }
-            this.playerMessage = null;
         }
-        
-        // Remove a instância do QueueManager da Collection principal do Client
-        this.guild.client.queueManagers.delete(this.guild.id);
-        console.log(`[QUEUE] 🗑️ QueueManager destruído para Guild ${this.guild.id}.`);
     }
 }
