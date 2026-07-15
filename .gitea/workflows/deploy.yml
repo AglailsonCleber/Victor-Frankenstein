@@ -10,20 +10,15 @@ on:
 
 jobs:
   deploy:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Sync to deploy directory
+      - name: Prepare host data directory
         run: |
-          DEPLOY_DIR="${DEPLOY_DIR:-/DATA/AppData/victor-frankenstein}"
-          mkdir -p "${DEPLOY_DIR}"
-          rsync -av --delete \
-            --exclude '.git' \
-            --exclude 'data' \
-            --exclude '.env' \
-            ./ "${DEPLOY_DIR}/"
+          docker run --rm -v /DATA/AppData:/DATA/AppData alpine \
+            sh -c 'mkdir -p /DATA/AppData/victor-frankenstein/data'
 
       - name: Write environment file from secrets
         env:
@@ -36,7 +31,6 @@ jobs:
           MEMORY_LIMIT: ${{ vars.MEMORY_LIMIT }}
           APP_DATA_PATH: ${{ vars.APP_DATA_PATH }}
         run: |
-          DEPLOY_DIR="${DEPLOY_DIR:-/DATA/AppData/victor-frankenstein}"
           {
             echo "DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}"
             echo "APPLICATION_ID=${{ secrets.APPLICATION_ID }}"
@@ -53,19 +47,16 @@ jobs:
             echo "IMAGE_TAG=${{ gitea.sha }}"
             echo "MEMORY_LIMIT=${MEMORY_LIMIT:-1024M}"
             echo "APP_DATA_PATH=${APP_DATA_PATH:-/DATA/AppData/victor-frankenstein}"
-          } > "${DEPLOY_DIR}/.env"
+          } > .env
 
       - name: Build and deploy
         run: |
-          DEPLOY_DIR="${DEPLOY_DIR:-/DATA/AppData/victor-frankenstein}"
-          cd "${DEPLOY_DIR}"
-          chmod +x scripts/deploy.sh
-          IMAGE_TAG="${{ gitea.sha }}" DEPLOY_DIR="${DEPLOY_DIR}" ./scripts/deploy.sh
+          export IMAGE_TAG="${{ gitea.sha }}"
+          docker compose --env-file .env build
+          docker compose --env-file .env up -d --remove-orphans
 
       - name: Health check
         run: |
-          DEPLOY_DIR="${DEPLOY_DIR:-/DATA/AppData/victor-frankenstein}"
-          cd "${DEPLOY_DIR}"
           sleep 10
           docker compose ps
           docker compose logs --tail=30 victor-frankenstein
