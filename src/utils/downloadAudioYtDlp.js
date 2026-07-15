@@ -1,11 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import { execFile } from 'child_process';
+import { env } from '../config/env.js';
 
-// Diretório de destino para os arquivos baixados (criará a pasta './data')
-const DATA_DIR = path.join(process.cwd(), 'data');
-// Comando que será executado (presume que 'yt-dlp' está no PATH do sistema)
-const YTDL_COMMAND = 'yt-dlp';
+const DATA_DIR = path.resolve(process.cwd(), env.dataDir());
+const YTDL_COMMAND = env.ytdlpCommand();
 
 // ---------------------------------
 // Função de download usando YT-DLP 
@@ -32,8 +31,9 @@ export async function downloadAudioYtDlp(youtubeUrl, filename) {
     '--extract-audio',            // -x: extrair apenas o áudio
     '--audio-format', 'mp3',      // --audio-format: converter para MP3
     '--output', outputPathTemplate, // -o: caminho de saída e nome do arquivo
-    '--retries', '3',             // Tenta novamente em caso de falha de rede
-    '--no-playlist'               // Garante que se for uma playlist, baixe apenas o primeiro
+    '--retries', '3',
+    '--no-playlist',
+    '--no-update',
   ];
 
   console.log(`[YT-DLP] ⚙️ Executando: ${YTDL_COMMAND} ${args.join(' ')}`);

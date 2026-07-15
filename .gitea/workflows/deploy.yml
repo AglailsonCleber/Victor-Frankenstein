@@ -1,0 +1,79 @@
+name: Deploy to CasaOS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  repository_dispatch:
+    types: [deploy]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: sh
+    steps:
+      # docker:24-cli não tem git/node — actions/checkout@v4 falha com exit 127
+      - name: Checkout
+        run: |
+          apk add --no-cache git
+          HOST="${{ gitea.server_url }}"
+          HOST="${HOST#http://}"
+          HOST="${HOST#https://}"
+          if echo "${{ gitea.server_url }}" | grep -q '^https'; then
+            PROTO="https"
+          else
+            PROTO="http"
+          fi
+          git init .
+          git remote add origin "${PROTO}://oauth2:${{ gitea.token }}@${HOST}/${{ gitea.repository }}.git"
+          git fetch --depth 1 origin "${{ gitea.sha }}"
+          git checkout FETCH_HEAD
+
+      - name: Prepare host data directory
+        run: |
+          docker run --rm -v /DATA/AppData:/DATA/AppData alpine \
+            sh -c 'mkdir -p /DATA/AppData/victor-frankenstein/data && chown -R 1000:1000 /DATA/AppData/victor-frankenstein/data'
+
+      - name: Write environment file from secrets
+        env:
+          GEMINI_MODEL_NAME: ${{ vars.GEMINI_MODEL_NAME }}
+          DEPLOY_MODE: ${{ vars.DEPLOY_MODE }}
+          COMMAND_PREFIX: ${{ vars.COMMAND_PREFIX }}
+          DATA_DIR: ${{ vars.DATA_DIR }}
+          TMDB_LANGUAGE: ${{ vars.TMDB_LANGUAGE }}
+          TMDB_WATCH_REGION: ${{ vars.TMDB_WATCH_REGION }}
+          MEMORY_LIMIT: ${{ vars.MEMORY_LIMIT }}
+          APP_DATA_PATH: ${{ vars.APP_DATA_PATH }}
+        run: |
+          {
+            echo "DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}"
+            echo "APPLICATION_ID=${{ secrets.APPLICATION_ID }}"
+            echo "SERVER_ID=${{ secrets.SERVER_ID }}"
+            echo "TMDB_BEARER_TOKEN=${{ secrets.TMDB_BEARER_TOKEN }}"
+            echo "GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}"
+            echo "GEMINI_MODEL_NAME=${GEMINI_MODEL_NAME:-gemini-2.5-flash}"
+            echo "DEPLOY_MODE=${DEPLOY_MODE:-guild}"
+            echo "COMMAND_PREFIX=${COMMAND_PREFIX:-!}"
+            echo "DATA_DIR=${DATA_DIR:-data}"
+            echo "TMDB_LANGUAGE=${TMDB_LANGUAGE:-pt-BR}"
+            echo "TMDB_WATCH_REGION=${TMDB_WATCH_REGION:-BR}"
+            echo "NODE_ENV=production"
+            echo "IMAGE_TAG=${{ gitea.sha }}"
+            echo "MEMORY_LIMIT=${MEMORY_LIMIT:-1024M}"
+            echo "APP_DATA_PATH=${APP_DATA_PATH:-/DATA/AppData/victor-frankenstein}"
+          } > .env
+
+      - name: Build and deploy
+        run: |
+          export IMAGE_TAG="${{ gitea.sha }}"
+          docker compose --env-file .env build
+          docker compose --env-file .env up -d --remove-orphans
+
+      - name: Health check
+        run: |
+          sleep 10
+          docker compose ps
+          docker compose logs --tail=30 victor-frankenstein

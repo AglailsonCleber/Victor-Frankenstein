@@ -1,78 +1,128 @@
 name: victor-frankenstein
+
 services:
   victor-frankenstein:
-    cpu_shares: 90
-    command:
-      - npm
-      - start
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: victor-frankenstein:${IMAGE_TAG:-latest}
+    container_name: victor-frankenstein
+    restart: unless-stopped
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      APPLICATION_ID: ${APPLICATION_ID}
+      SERVER_ID: ${SERVER_ID:-}
+      TMDB_BEARER_TOKEN: ${TMDB_BEARER_TOKEN}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      GEMINI_MODEL_NAME: ${GEMINI_MODEL_NAME:-gemini-2.5-flash}
+      GEMINI_SYSTEM_INSTRUCTION: ${GEMINI_SYSTEM_INSTRUCTION:-}
+      DEPLOY_MODE: ${DEPLOY_MODE:-guild}
+      COMMAND_PREFIX: ${COMMAND_PREFIX:-!}
+      DATA_DIR: ${DATA_DIR:-data}
+      TMDB_LANGUAGE: ${TMDB_LANGUAGE:-pt-BR}
+      TMDB_WATCH_REGION: ${TMDB_WATCH_REGION:-BR}
+      YTDLP_COMMAND: ${YTDLP_COMMAND:-yt-dlp}
+      NODE_ENV: ${NODE_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - type: bind
+        source: ${APP_DATA_PATH:-/DATA/AppData/victor-frankenstein}/data
+        target: /usr/src/app/data
     deploy:
       resources:
         limits:
-          memory: 7939M
-    environment:
-      - APPLICATION_ID=
-      - DISCORD_TOKEN=
-      - NODE_VERSION=20.19.5
-      - PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-      - SERVER_ID=
-      - TMDB_API_KEY=
-      - TMDB_BEARER_TOKEN=
-      - YARN_VERSION=1.22.22
-    image: victor-frankenstein:1.0.0
-    ports:
-      - target: 8080
-        published: "8080"
-        protocol: tcp
-    restart: unless-stopped
-    volumes:
-      - type: bind
-        source: /DATA/AppData/victor-frankenstein
-        target: /usr/src/app
+          memory: ${MEMORY_LIMIT:-1024M}
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'node index.js' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     x-casaos:
       envs:
-        - container: PATH
+        - container: DISCORD_TOKEN
           description:
-            en_us: ""
-        - container: NODE_VERSION
+            en_us: Discord bot token (secret)
+            pt_br: Token do bot Discord (secreto)
+        - container: APPLICATION_ID
           description:
-            en_us: ""
-        - container: YARN_VERSION
+            en_us: Discord application ID
+            pt_br: ID da aplicação Discord
+        - container: SERVER_ID
           description:
-            en_us: ""
-      image: ""
-      ports:
-        - container: "8080"
+            en_us: Guild ID for slash command deploy
+            pt_br: ID do servidor para deploy dos comandos
+        - container: TMDB_BEARER_TOKEN
           description:
-            en_us: ""
-    devices: []
-    cap_add: []
-    network_mode: bridge
-    privileged: false
-    hostname: ""
+            en_us: TMDB API v4 bearer token (secret)
+            pt_br: Token Bearer da API TMDB v4 (secreto)
+        - container: GOOGLE_API_KEY
+          description:
+            en_us: Google Gemini API key (secret)
+            pt_br: Chave da API Google Gemini (secreto)
+        - container: DEPLOY_MODE
+          description:
+            en_us: "Auto-deploy mode: none | guild | global | guild-then-global"
+            pt_br: "Modo de deploy: none | guild | global | guild-then-global"
+        - container: GEMINI_MODEL_NAME
+          description:
+            en_us: Gemini model name
+            pt_br: Nome do modelo Gemini
+        - container: COMMAND_PREFIX
+          description:
+            en_us: Prefix for text commands
+            pt_br: Prefixo dos comandos de texto
+        - container: DATA_DIR
+          description:
+            en_us: Directory for downloaded audio files
+            pt_br: Diretório para arquivos de áudio baixados
+        - container: TMDB_LANGUAGE
+          description:
+            en_us: TMDB API language code
+            pt_br: Código de idioma da API TMDB
+        - container: TMDB_WATCH_REGION
+          description:
+            en_us: TMDB watch providers region
+            pt_br: Região para provedores de streaming TMDB
+        - container: MEMORY_LIMIT
+          description:
+            en_us: Container memory limit (e.g. 1024M)
+            pt_br: Limite de memória do container (ex. 1024M)
+      volumes:
+        - container: /usr/src/app/data
+          description:
+            en_us: Persistent storage for downloaded audio
+            pt_br: Armazenamento persistente para áudios baixados
+
 x-casaos:
   architectures:
     - amd64
-  author: CasaOS User
-  category: unknown
+  author: AglailsonCleber
+  category: Bot
   description:
-    en_us: ""
-  developer: unknown
-  hostname: ""
+    en_us: Discord bot for TMDB search, Gemini chat, and voice playback
+    pt_br: Bot Discord para busca TMDB, chat Gemini e reprodução de voz
+  developer: AglailsonCleber
   icon: ""
-  image: null
-  index: /
+  index: ""
   is_uncontrolled: false
   main: victor-frankenstein
   port_map: ""
-  scheme: http
+  scheme: ""
   store_app_id: victor-frankenstein
   tagline:
-    en_us: This is a compose app converted from a legacy app (CasaOS v0.4.3 or
-      earlier)
+    en_us: Discord entertainment bot — TMDB, Gemini AI, voice playback
+    pt_br: Bot de entretenimento Discord — TMDB, Gemini AI, reprodução de voz
   thumbnail: ""
   tips:
-    custom: This is a compose app converted from a legacy app (CasaOS v0.4.3 or
-      earlier)
+    custom: |
+      Configure os secrets (DISCORD_TOKEN, GOOGLE_API_KEY, TMDB_BEARER_TOKEN) nas variáveis de ambiente.
+      Use DEPLOY_MODE=guild para testes e DEPLOY_MODE=global para produção.
   title:
-    custom: ""
-    en_us: victor-frankenstein
+    custom: Victor-Frankenstein
+    en_us: Victor-Frankenstein

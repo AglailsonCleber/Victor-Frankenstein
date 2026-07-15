@@ -61,3 +61,12 @@ SERVER_ID=SEU_SERVER_ID_AQUI
 # Token de Leitura da API do TMDB (TMDB -> Configurações -> API)
 # (Use o "Token de Leitura da API (v4 auth)" como Bearer Token)
 TMDB_BEARER_TOKEN=SEU_TMDB_BEARER_TOKEN_AQUI
+
+# Chave da API Google Gemini (Google AI Studio)
+GOOGLE_API_KEY=SUA_GOOGLE_API_KEY_AQUI
+
+# Modo de deploy automático: none | guild | global | guild-then-global
+DEPLOY_MODE=guild
+```
+
+Para a lista completa de variáveis e deploy em produção, consulte [DEPLOY.md](DEPLOY.md) e [.env.example](.env.example).

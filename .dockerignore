@@ -1,0 +1,15 @@
+node_modules
+npm-debug.log*
+.env
+.env.*
+!.env.example
+.git
+.github
+.gitea
+data
+*.md
+!README.md
+LICENSE
+.dockerignore
+docker-compose*.yaml
+docker-compose*.yml

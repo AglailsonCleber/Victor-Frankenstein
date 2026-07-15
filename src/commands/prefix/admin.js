@@ -1,17 +1,10 @@
-// src/commands/prefix/admin.js (ES Module)
-
 import { 
     REST, 
     Routes, 
     PermissionFlagsBits 
 } from 'discord.js';
-// Importação do utilitário centralizado para coletar comandos
-import { collectCommands } from '../../utils/slashCommandCollector.js'; 
-
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = process.env.APPLICATION_ID;
-// O SERVER_ID é necessário para deletar comandos da Guilda, embora a versão do deploy use a Guilda da mensagem
-const GUILD_ID = process.env.SERVER_ID; 
+import { collectCommands } from '../../utils/slashCommandCollector.js';
+import { env } from '../../config/env.js';
 
 
 // ====================================================================\r\n
@@ -36,15 +29,13 @@ export async function deployGuildCommands(message) {
     const commands = collection.commands;
 
     // 2. Registra na API
-    const rest = new REST().setToken(DISCORD_TOKEN);
-    const GUILD_ID_TARGET = message.guild.id;
+    const rest = new REST().setToken(env.discordToken());
 
     try {
         await message.channel.send(`🚀 Iniciando o registro de **${commands.length}** comandos de barra (/) no servidor **${message.guild.name}**...`);
 
-        // Rota específica para comandos de Guilda
-        await rest.put(
-            Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID_TARGET),
+        const data = await rest.put(
+            Routes.applicationGuildCommands(env.applicationId(), message.guildId),
             { body: commands },
         );
 
@@ -110,14 +101,13 @@ export async function deployGlobalCommands(message) {
     const commands = collection.commands;
 
     // 2. Registra na API
-    const rest = new REST().setToken(DISCORD_TOKEN);
+    const rest = new REST().setToken(env.discordToken());
 
     try {
         await message.channel.send(`🌐 Iniciando o registro de **${commands.length}** comandos de barra (/) GLOBAIS do seu bot...`);
 
-        // Rota para comandos de aplicação (globais)
-        await rest.put(
-            Routes.applicationCommands(CLIENT_ID),
+        const data = await rest.put(
+            Routes.applicationCommands(env.applicationId()), // Rota Global para toda a aplicação
             { body: commands },
         );
 
@@ -128,27 +118,54 @@ export async function deployGlobalCommands(message) {
     }
 }
 
-// ====================================================================\r\n
-// FUNÇÃO 4: DELETAR COMANDOS GLOBAIS
-// ====================================================================\r\n
+// ====================================================================
+// FUNÇÃO 3: DELETAR APENAS COMANDOS DO BOT NO SERVIDOR (GUILD)
+// ====================================================================
 
-/**
- * Deleta todos os comandos de barra (/) globais (aplicação) do bot.
- * @param {import('discord.js').Message} message O objeto Message do comando.
- */
+export async function deleteGuildCommands(message) {
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        return message.reply('❌ Você precisa de permissão de Administrador para usar este comando.');
+    }
+    
+    if (!message.guild) {
+        return message.reply('❌ Este comando só pode ser usado em um servidor (Guild).');
+    }
+
+    const rest = new REST().setToken(env.discordToken());
+    const guildId = message.guild.id; 
+
+    try {
+        await message.channel.send(`🗑️ Iniciando a exclusão dos comandos de barra (/) do seu bot neste servidor: \`${message.guild.name}\`...`);
+
+        await rest.put(
+            Routes.applicationGuildCommands(env.applicationId(), guildId),
+            { body: [] },
+        );
+
+        await message.channel.send('✅ Sucesso! Comandos de barra (/) do seu bot foram excluídos deste servidor.');
+    } catch (error) {
+        console.error('❌ Erro ao deletar comandos do servidor:', error);
+        await message.channel.send('❌ Erro ao comunicar com a API do Discord para exclusão.');
+    }
+}
+
+// ====================================================================
+// FUNÇÃO 4: DELETAR APENAS OS COMANDOS GLOBAIS DO BOT (CLIENT)
+// ====================================================================
+
 export async function deleteGlobalCommands(message) {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
         return message.reply('❌ Você precisa de permissão de Administrador para usar este comando.');
     }
 
-    const rest = new REST().setToken(DISCORD_TOKEN);
+    const rest = new REST().setToken(env.discordToken());
 
     try {
         await message.channel.send('🗑️ Iniciando a exclusão dos comandos de barra (/) GLOBAIS do seu bot...');
 
         // Rota para comandos de aplicação (globais) com corpo vazio
         await rest.put(
-            Routes.applicationCommands(CLIENT_ID),
+            Routes.applicationCommands(env.applicationId()),
             { body: [] },
         );
 

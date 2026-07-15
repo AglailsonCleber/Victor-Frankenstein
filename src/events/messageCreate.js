@@ -3,6 +3,7 @@
 import { Events, Collection } from "discord.js";
 import QueueManager from '../services/QueueManager.js';
 import MediaTrack from '../models/MediaTrack.js';
+import { env } from "../config/env.js";
 
 // --- EXPORTAÇÃO DE DADOS PARA O HANDLER ---\r\n
 export const data = {
@@ -16,9 +17,9 @@ export const data = {
  * @param {import('discord.js').Message} message O objeto de mensagem recebido.
  */
 export async function execute(message) {
-  const prefix = "!";
+  const prefix = "!"; // Assumindo o seu prefixo
 
-  // 1. Verificações básicas e extração de comando/args
+  // Ignora mensagens de bots e mensagens sem o prefixo
   if (message.author.bot || !message.content.startsWith(prefix) || !message.guild || !message.member) return;
 
   const [commandName, ...args] = message.content.slice(prefix.length).trim().split(/ +/);

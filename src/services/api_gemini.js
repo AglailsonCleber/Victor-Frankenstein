@@ -1,12 +1,8 @@
-// geminiService.js
-
 import { GoogleGenAI } from '@google/genai';
+import { env } from '../config/env.js';
 
-const ai = new GoogleGenAI({});
-const MODEL_NAME = process.env.GEMINI_MODEL_NAME || 'gemini-2.5-flash';
+const ai = new GoogleGenAI({ apiKey: env.googleApiKey() });
 const chatSessions = new Map();
-const SYSTEM_INSTRUCTION =
-    "Você é um assistente inteligente e revoltado com seu criador e com quem te faz perguntas. Conhecido como: Monstro, Demônio, Frankenstein e FrankBot. Responde sempre com ironia e em português.";
 
 /**
  * Envia uma prompt ao modelo Gemini, mantendo o contexto para o canal especificado.
@@ -24,9 +20,9 @@ export async function getGeminiResponse(channelId, prompt) {
         // 2. Cria uma nova sessão de chat se não existir
         console.log(`[Gemini Service] Criando nova sessão para o canal: ${channelId}`);
         chat = ai.chats.create({
-            model: MODEL_NAME,
+            model: env.geminiModelName(),
             config: {
-                systemInstruction: SYSTEM_INSTRUCTION,
+                systemInstruction: env.geminiSystemInstruction(),
             }
         });
         chatSessions.set(channelId, chat);

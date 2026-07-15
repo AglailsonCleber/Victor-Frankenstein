@@ -1,18 +1,9 @@
-// src/services/api_tmdb.js (ES Module)
+import axios from 'axios';
+import { EmbedBuilder } from 'discord.js';
+import { env } from '../config/env.js';
 
-import axios from 'axios'; // Mudar require('axios')
-import { EmbedBuilder } from 'discord.js'; // Mudar require('discord.js')
-
-// Se o seu index.js usa 'import 'dotenv/config'', as variáveis já estão no process.env
-// require('dotenv').config(); // <-- REMOVIDO para evitar redundância e erro CJS
-
-const BEARER_TOKEN = process.env.TMDB_BEARER_TOKEN;
 const BASE_URL = 'https://api.themoviedb.org/3';
 const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
-
-if (!BEARER_TOKEN) {
-    console.error("ERRO CRÍTICO: TMDB_BEARER_TOKEN não está configurada no arquivo .env.");
-}
 
 // --- Cache para os Gêneros ---
 let genreCache = {
@@ -28,11 +19,11 @@ async function tmdbGet(endpoint, params = {}) {
     try {
         const response = await axios.get(`${BASE_URL}${endpoint}`, {
             headers: {
-                Authorization: `Bearer ${BEARER_TOKEN}`,
+                Authorization: `Bearer ${env.tmdbBearerToken()}`,
             },
             params: {
                 ...params,
-                language: 'pt-BR', // Definido globalmente
+                language: env.tmdbLanguage(),
             }
         });
         return response.data;
@@ -135,7 +126,7 @@ export async function getWatchProviders(type, id, title) { // Adicionar export
         .setColor(0x0099ff)
         .setTitle(`Onde Assistir: ${title}`);
 
-    const providers = data.results?.BR; // Foca nos resultados do Brasil
+    const providers = data.results?.[env.tmdbWatchRegion()];
 
     if (!providers) {
         embed.setDescription('Informações de *Onde Assistir* não disponíveis para o Brasil.');

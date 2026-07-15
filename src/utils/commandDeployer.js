@@ -1,15 +1,9 @@
-// src/utils/commandDeployer.js (ES Module)
-
 import { 
     REST, 
     Routes,
 } from 'discord.js';
-import { collectCommands } from './slashCommandCollector.js'; 
-
-// Variáveis de ambiente
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = process.env.APPLICATION_ID;
-const SERVER_ID = process.env.SERVER_ID; 
+import { collectCommands } from './slashCommandCollector.js';
+import { env } from '../config/env.js';
 
 // ====================================================================
 // FUNÇÃO 1: DEPLOY DE COMANDOS NA GUILDA (RÁPIDO)
@@ -21,7 +15,8 @@ const SERVER_ID = process.env.SERVER_ID;
  * @returns {Promise<{success: boolean, message: string}>} O resultado da operação.
  */
 export async function deployGuildCommands(client) {
-    if (!SERVER_ID) {
+    const serverId = env.serverId();
+    if (!serverId) {
         return { success: false, message: '❌ Variável SERVER_ID não definida no ambiente para deploy de Guilda.' };
     }
 
@@ -30,21 +25,52 @@ export async function deployGuildCommands(client) {
     if (!collection.success) return { success: false, message: collection.message };
     const commands = collection.commands;
 
-    const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
+    const rest = new REST({ version: '10' }).setToken(env.discordToken());
 
     try {
-        console.log(`🚀 Iniciando o registro de ${commands.length} comandos de barra (/) na Guilda: ${SERVER_ID}`);
+        console.log(`🚀 Iniciando o registro de ${commands.length} comandos (GUILD) na Guilda ${serverId}...`);
 
-        // Rota de registro de comandos de guilda
-        await rest.put(
-            Routes.applicationGuildCommands(CLIENT_ID, SERVER_ID),
+        const data = await rest.put(
+            Routes.applicationGuildCommands(env.applicationId(), serverId),
             { body: commands },
         );
 
         return { success: true, message: `✅ Sucesso! ${commands.length} comandos de barra (/) registrados no servidor de teste.` };
     } catch (error) {
-        console.error('❌ Erro ao registrar comandos do servidor:', error);
-        return { success: false, message: `❌ Erro ao comunicar com a API do Discord para deploy de Guilda: ${error.message}` };
+        console.error('❌ Erro ao registrar comandos na Guilda:', error);
+        return { success: false, message: '❌ Erro ao comunicar com a API do Discord para Guild Deploy.' };
+    }
+}
+
+// ====================================================================
+// FUNÇÃO 2: DEPLOY DE COMANDOS GLOBAIS (PRODUÇÃO)
+// ====================================================================
+
+/**
+ * 2. Coleta e registra os comandos de barra (/) globalmente (em todos os servidores).
+ * @param {import('discord.js').Client} client O cliente Discord.js.
+ * @returns {Promise<{success: boolean, message: string}>} O resultado da operação.
+ */
+export async function deployGlobalCommands(client) {
+    // AQUI: Usa a função importada para coletar comandos
+    const collection = await collectCommands();
+    if (!collection.success) return { success: false, message: collection.message };
+    const commands = collection.commands;
+
+    const rest = new REST({ version: '10' }).setToken(env.discordToken());
+
+    try {
+        console.log(`🌍 Iniciando o registro de ${commands.length} comandos (GLOBAL)... (Pode levar até 1 hora para propagar)`);
+
+        const data = await rest.put(
+            Routes.applicationCommands(env.applicationId()),
+            { body: commands },
+        );
+
+        return { success: true, message: `✅ Sucesso! ${data.length} comandos Globais registrados. (Propagação pode levar até 1h)` };
+    } catch (error) {
+        console.error('❌ Erro ao registrar comandos Globais:', error);
+        return { success: false, message: '❌ Erro ao comunicar com a API do Discord para Global Deploy.' };
     }
 }
 
@@ -59,19 +85,20 @@ export async function deployGuildCommands(client) {
  * @returns {Promise<{success: boolean, message: string}>} O resultado da operação.
  */
 export async function deleteGuildCommands(client) {
-    if (!SERVER_ID) {
-        return { success: false, message: '❌ Variável SERVER_ID não definida no ambiente para deletar comandos de Guilda.' };
+    const serverId = env.serverId();
+    if (!serverId) {
+        return { success: false, message: '❌ Variável SERVER_ID não definida no ambiente para exclusão de Guilda.' };
     }
     
-    const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
+    const rest = new REST({ version: '10' }).setToken(env.discordToken());
 
     try {
-        console.log('🗑️ Iniciando a exclusão dos comandos de barra (/) da Guilda de teste...');
+        console.log(`🗑️ Iniciando a exclusão dos comandos de barra (/) do bot na Guilda ${serverId}...`);
 
         // Rota de exclusão (envia um array vazio)
         await rest.put(
-            Routes.applicationGuildCommands(CLIENT_ID, SERVER_ID),
-            { body: [] },
+            Routes.applicationGuildCommands(env.applicationId(), serverId),
+            { body: [] }, // Envia um array vazio para deletar todos os comandos da Guilda
         );
 
         return { success: true, message: '✅ Sucesso! Comandos de barra (/) do bot foram excluídos do servidor de teste.' };
@@ -125,13 +152,13 @@ export async function deployGlobalCommands(client) {
  * @returns {Promise<{success: boolean, message: string}>} O resultado da operação.
  */
 export async function deleteGlobalCommands(client) {
-    const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
+    const rest = new REST({ version: '10' }).setToken(env.discordToken());
 
     try {
         console.log('🗑️ Iniciando a exclusão dos comandos de barra (/) GLOBAIS do bot...');
 
         await rest.put(
-            Routes.applicationCommands(CLIENT_ID),
+            Routes.applicationCommands(env.applicationId()),
             { body: [] }, // Envia um array vazio para deletar todos os comandos globais
         );
 
