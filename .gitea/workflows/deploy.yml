@@ -12,8 +12,22 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      # docker:24-cli não tem git/node — actions/checkout@v4 falha com exit 127
       - name: Checkout
-        uses: actions/checkout@v4
+        run: |
+          apk add --no-cache git
+          HOST="${{ gitea.server_url }}"
+          HOST="${HOST#http://}"
+          HOST="${HOST#https://}"
+          if echo "${{ gitea.server_url }}" | grep -q '^https'; then
+            PROTO="https"
+          else
+            PROTO="http"
+          fi
+          git init .
+          git remote add origin "${PROTO}://oauth2:${{ gitea.token }}@${HOST}/${{ gitea.repository }}.git"
+          git fetch --depth 1 origin "${{ gitea.sha }}"
+          git checkout FETCH_HEAD
 
       - name: Prepare host data directory
         run: |
