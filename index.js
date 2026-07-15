@@ -5,24 +5,20 @@ import { env, validateEnv } from './src/config/env.js';
 
 validateEnv();
 
-// Crie a instância do Client
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates,
     ],
 });
 
-// --- CORREÇÃO: Inicialize as DUAS coleções esperadas pelo commandHandler.js ---
 client.prefixCommands = new Collection();
 client.slashCommands = new Collection();
-// -----------------------------------------------------------------------------
+client.queueManagers = new Map();
 
-// 1. Carrega Eventos
 loadEvents(client);
-
-// 2. Carrega Comandos
 await loadCommands(client);
 
 // Conecta o bot

@@ -1,4 +1,4 @@
-// src/commands/slash/chat.js (Slash Command)
+// src/commands/slash/conversar.js (Slash Command)
 
 import { SlashCommandBuilder } from 'discord.js';
 import { getGeminiResponse } from '../../services/api_gemini.js'; 
@@ -46,11 +46,14 @@ export async function execute(interaction) {
         if (error.message && error.message.includes("429")) {
             const embed = new EmbedBuilder()
                 .setColor(0xFF0000)
-                .setDescription("⚠️ **Limite de Uso Excedido.**\nO bot atingiu o limite de tokens ou requisições do plano gratuito. Tente novamente em alguns minutos ou amanhã.");
+                .setDescription("⚠️ **Limite de Uso Excedido.**\\nO bot atingiu o limite de tokens ou requisições do plano gratuito. Tente novamente em alguns minutos ou amanhã.");
             
             await interaction.editReply({ embeds: [embed] });
         } else {
-            await interaction.editReply("❌ **Erro Interno.** Ocorreu um erro ao processar sua solicitação Gemini.");
+            // Tratamento de outros erros
+            await interaction.editReply({ 
+                content: `❌ Ocorreu um erro ao processar sua discussão: ${error.message.substring(0, 100)}...` 
+            });
         }
     }
 }

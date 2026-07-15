@@ -29,7 +29,9 @@ export async function loadCommands(client) {
  * @param {string} type - O tipo de comando (PREFIX ou SLASH) para logs.
  */
 async function loadDirectory(commandCollection, directoryPath, type) {
+    console.log(`\n--- Carregando Comandos ${type} ---`);
     try {
+        // 1. Lê todos os arquivos .js no diretório
         const commandFiles = (await fs.readdir(directoryPath)).filter(file => file.endsWith('.js'));
 
         for (const file of commandFiles) {
@@ -40,25 +42,29 @@ async function loadDirectory(commandCollection, directoryPath, type) {
             const fileUrl = pathToFileURL(filePath).href;
 
             try {
-                // Importação dinâmica (assíncrona)
+                // 2. Importação dinâmica (assíncrona)
                 const command = await import(fileUrl);
                 
+                // 3. Verificação de Estrutura
                 // Os comandos ESM usam 'export const data' e 'export async function execute'
                 if ('data' in command && 'execute' in command) {
+                    // Armazena na coleção usando o nome do comando como chave (data.name)
                     commandCollection.set(command.data.name, command);
-                    console.log(`[COMMAND] Carregado com Sucesso [${type}]: ${command.data.name}`);
+                    console.log(`[COMMAND] ✅ Carregado com Sucesso [${type}]: ${command.data.name}`);
                 } else {
-                    console.warn(`[WARNING] Comando ${file} mal formatado (faltando 'data' ou 'execute').`);
+                    console.warn(`[WARNING] ⚠️ Comando ${file} mal formatado (faltando 'data' ou 'execute').`);
                 }
             } catch (error) {
-                console.error(`[COMMAND ERROR] Falha ao carregar o comando ${file}: ${error.message}`);
+                console.error(`[COMMAND ERROR] ❌ Falha ao carregar o comando ${file}: ${error.message}`);
             }
         }
     } catch (error) {
+        // Trata o caso em que o diretório não existe
         if (error.code === 'ENOENT') {
-            console.warn(`[WARNING] Diretório de comandos ${type} não encontrado: ${directoryPath}`);
+            console.warn(`[WARNING] ⚠️ Diretório de comandos ${type} não encontrado: ${directoryPath}`);
         } else {
-            console.error(`[COMMAND ERROR] Erro ao processar diretório ${type}: ${error.message}`);
+            console.error(`[COMMAND ERROR] ❌ Erro ao processar diretório ${type}: ${error.message}`);
         }
     }
+    console.log('--------------------------');
 }
