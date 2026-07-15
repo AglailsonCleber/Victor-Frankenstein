@@ -15,10 +15,8 @@ RUN npm ci --omit=dev
 
 COPY . .
 
-RUN addgroup -S -g 1000 appgroup \
-    && adduser -S -u 1000 -G appgroup appuser \
-    && mkdir -p /usr/src/app/data \
-    && chown -R appuser:appgroup /usr/src/app
+RUN mkdir -p /usr/src/app/data \
+    && chown -R node:node /usr/src/app
 
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
