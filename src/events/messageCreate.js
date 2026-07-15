@@ -1,6 +1,5 @@
-// src/events/messageCreate.js (ES Module com Correções)
-
 import { Events } from "discord.js";
+import { env } from "../config/env.js";
 
 // --- EXPORTAÇÃO DE DADOS PARA O HANDLER ---
 export const data = {
@@ -10,7 +9,7 @@ export const data = {
 
 // --- FUNÇÃO DE EXECUÇÃO ---
 export async function execute(message) {
-  const prefix = "!"; // Assumindo o seu prefixo
+  const prefix = env.commandPrefix();
 
   // Ignora mensagens de bots e mensagens sem o prefixo
   if (message.author.bot || !message.content.startsWith(prefix)) return;

@@ -1,0 +1,68 @@
+name: Deploy to CasaOS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync to deploy directory
+        run: |
+          DEPLOY_DIR="${DEPLOY_DIR:-/DATA/AppData/victor-frankenstein}"
+          mkdir -p "${DEPLOY_DIR}"
+          rsync -av --delete \
+            --exclude '.git' \
+            --exclude 'data' \
+            --exclude '.env' \
+            ./ "${DEPLOY_DIR}/"
+
+      - name: Write environment file from secrets
+        env:
+          GEMINI_MODEL_NAME: ${{ vars.GEMINI_MODEL_NAME }}
+          DEPLOY_MODE: ${{ vars.DEPLOY_MODE }}
+          COMMAND_PREFIX: ${{ vars.COMMAND_PREFIX }}
+          DATA_DIR: ${{ vars.DATA_DIR }}
+          TMDB_LANGUAGE: ${{ vars.TMDB_LANGUAGE }}
+          TMDB_WATCH_REGION: ${{ vars.TMDB_WATCH_REGION }}
+          MEMORY_LIMIT: ${{ vars.MEMORY_LIMIT }}
+          APP_DATA_PATH: ${{ vars.APP_DATA_PATH }}
+        run: |
+          DEPLOY_DIR="${DEPLOY_DIR:-/DATA/AppData/victor-frankenstein}"
+          {
+            echo "DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}"
+            echo "APPLICATION_ID=${{ secrets.APPLICATION_ID }}"
+            echo "SERVER_ID=${{ secrets.SERVER_ID }}"
+            echo "TMDB_BEARER_TOKEN=${{ secrets.TMDB_BEARER_TOKEN }}"
+            echo "GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}"
+            echo "GEMINI_MODEL_NAME=${GEMINI_MODEL_NAME:-gemini-2.5-flash}"
+            echo "DEPLOY_MODE=${DEPLOY_MODE:-guild}"
+            echo "COMMAND_PREFIX=${COMMAND_PREFIX:-!}"
+            echo "DATA_DIR=${DATA_DIR:-data}"
+            echo "TMDB_LANGUAGE=${TMDB_LANGUAGE:-pt-BR}"
+            echo "TMDB_WATCH_REGION=${TMDB_WATCH_REGION:-BR}"
+            echo "NODE_ENV=production"
+            echo "IMAGE_TAG=${{ gitea.sha }}"
+            echo "MEMORY_LIMIT=${MEMORY_LIMIT:-1024M}"
+            echo "APP_DATA_PATH=${APP_DATA_PATH:-/DATA/AppData/victor-frankenstein}"
+          } > "${DEPLOY_DIR}/.env"
+
+      - name: Build and deploy
+        run: |
+          DEPLOY_DIR="${DEPLOY_DIR:-/DATA/AppData/victor-frankenstein}"
+          cd "${DEPLOY_DIR}"
+          chmod +x scripts/deploy.sh
+          IMAGE_TAG="${{ gitea.sha }}" DEPLOY_DIR="${DEPLOY_DIR}" ./scripts/deploy.sh
+
+      - name: Health check
+        run: |
+          DEPLOY_DIR="${DEPLOY_DIR:-/DATA/AppData/victor-frankenstein}"
+          cd "${DEPLOY_DIR}"
+          sleep 10
+          docker compose ps
+          docker compose logs --tail=30 victor-frankenstein

@@ -1,15 +1,9 @@
-// src/utils/commandDeployer.js (ES Module)
-
 import { 
     REST, 
     Routes,
 } from 'discord.js';
-import { collectCommands } from './slashCommandCollector.js'; 
-
-// Variáveis de ambiente
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = process.env.APPLICATION_ID;
-const SERVER_ID = process.env.SERVER_ID; 
+import { collectCommands } from './slashCommandCollector.js';
+import { env } from '../config/env.js';
 
 // ====================================================================
 // FUNÇÃO 1: DEPLOY DE COMANDOS NA GUILDA (RÁPIDO)
@@ -21,7 +15,8 @@ const SERVER_ID = process.env.SERVER_ID;
  * @returns {Promise<{success: boolean, message: string}>} O resultado da operação.
  */
 export async function deployGuildCommands(client) {
-    if (!SERVER_ID) {
+    const serverId = env.serverId();
+    if (!serverId) {
         return { success: false, message: '❌ Variável SERVER_ID não definida no ambiente para deploy de Guilda.' };
     }
 
@@ -30,13 +25,13 @@ export async function deployGuildCommands(client) {
     if (!collection.success) return { success: false, message: collection.message };
     const commands = collection.commands;
 
-    const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
+    const rest = new REST({ version: '10' }).setToken(env.discordToken());
 
     try {
-        console.log(`🚀 Iniciando o registro de ${commands.length} comandos (GUILD) na Guilda ${SERVER_ID}...`);
+        console.log(`🚀 Iniciando o registro de ${commands.length} comandos (GUILD) na Guilda ${serverId}...`);
 
         const data = await rest.put(
-            Routes.applicationGuildCommands(CLIENT_ID, SERVER_ID),
+            Routes.applicationGuildCommands(env.applicationId(), serverId),
             { body: commands },
         );
 
@@ -62,13 +57,13 @@ export async function deployGlobalCommands(client) {
     if (!collection.success) return { success: false, message: collection.message };
     const commands = collection.commands;
 
-    const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
+    const rest = new REST({ version: '10' }).setToken(env.discordToken());
 
     try {
         console.log(`🌍 Iniciando o registro de ${commands.length} comandos (GLOBAL)... (Pode levar até 1 hora para propagar)`);
 
         const data = await rest.put(
-            Routes.applicationCommands(CLIENT_ID),
+            Routes.applicationCommands(env.applicationId()),
             { body: commands },
         );
 
@@ -90,17 +85,18 @@ export async function deployGlobalCommands(client) {
  * @returns {Promise<{success: boolean, message: string}>} O resultado da operação.
  */
 export async function deleteGuildCommands(client) {
-    if (!SERVER_ID) {
+    const serverId = env.serverId();
+    if (!serverId) {
         return { success: false, message: '❌ Variável SERVER_ID não definida no ambiente para exclusão de Guilda.' };
     }
     
-    const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
+    const rest = new REST({ version: '10' }).setToken(env.discordToken());
 
     try {
-        console.log(`🗑️ Iniciando a exclusão dos comandos de barra (/) do bot na Guilda ${SERVER_ID}...`);
+        console.log(`🗑️ Iniciando a exclusão dos comandos de barra (/) do bot na Guilda ${serverId}...`);
 
         await rest.put(
-            Routes.applicationGuildCommands(CLIENT_ID, SERVER_ID),
+            Routes.applicationGuildCommands(env.applicationId(), serverId),
             { body: [] }, // Envia um array vazio para deletar todos os comandos da Guilda
         );
 
@@ -122,13 +118,13 @@ export async function deleteGuildCommands(client) {
  * @returns {Promise<{success: boolean, message: string}>} O resultado da operação.
  */
 export async function deleteGlobalCommands(client) {
-    const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
+    const rest = new REST({ version: '10' }).setToken(env.discordToken());
 
     try {
         console.log('🗑️ Iniciando a exclusão dos comandos de barra (/) GLOBAIS do bot...');
 
         await rest.put(
-            Routes.applicationCommands(CLIENT_ID),
+            Routes.applicationCommands(env.applicationId()),
             { body: [] }, // Envia um array vazio para deletar todos os comandos globais
         );
 

@@ -1,12 +1,9 @@
-// index.js (Corrigido para ES Modules e Coleções)
-
-// 1. dotenv - Mude require() para import
-import 'dotenv/config';
-
-// 2. discord.js, handlers - Mude require() para import
 import { Client, Collection, GatewayIntentBits } from 'discord.js';
 import { loadEvents } from './src/handlers/eventHandler.js';
 import { loadCommands } from './src/handlers/commandHandler.js';
+import { env, validateEnv } from './src/config/env.js';
+
+validateEnv();
 
 // Crie a instância do Client
 const client = new Client({
@@ -29,4 +26,4 @@ loadEvents(client);
 await loadCommands(client);
 
 // Conecta o bot
-client.login(process.env.DISCORD_TOKEN);
+client.login(env.discordToken());

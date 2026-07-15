@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate environment module
+        run: |
+          DISCORD_TOKEN=test \
+          APPLICATION_ID=test \
+          TMDB_BEARER_TOKEN=test \
+          GOOGLE_API_KEY=test \
+          SERVER_ID=test \
+          node --input-type=module -e "import { validateEnv } from './src/config/env.js'; validateEnv(); console.log('OK')"
+
+      - name: Validate Docker Compose
+        run: |
+          docker compose -f docker-compose.yaml config > /dev/null
+
+      - name: Check required files
+        run: |
+          test -f .env.example
+          test -f Dockerfile
+          test -f docker-compose.yaml
+          test -f scripts/deploy.sh

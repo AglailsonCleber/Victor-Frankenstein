@@ -1,11 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import { execFile } from 'child_process';
+import { env } from '../config/env.js';
 
-// Diretório de destino para os arquivos baixados
-const DATA_DIR = path.join(process.cwd(), 'data');
-// Comando que será executado (mude para 'youtube-dl' se preferir)
-const YTDL_COMMAND = 'yt-dlp';
+const DATA_DIR = path.resolve(process.cwd(), env.dataDir());
+const YTDL_COMMAND = env.ytdlpCommand();
 
 // ---------------------------------
 // Função de download usando YT-DLP 

@@ -1,15 +1,10 @@
-// src/commands/prefix/admin.js (ES Module)
-
 import { 
     REST, 
     Routes, 
     PermissionFlagsBits 
 } from 'discord.js';
-// Importação do utilitário centralizado (dois níveis acima)
-import { collectCommands } from '../../utils/slashCommandCollector.js'; 
-
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = process.env.APPLICATION_ID;
+import { collectCommands } from '../../utils/slashCommandCollector.js';
+import { env } from '../../config/env.js';
 
 
 // ====================================================================
@@ -30,13 +25,13 @@ export async function deployGuildCommands(message) {
     const commands = collection.commands;
 
     // 2. Registra na API
-    const rest = new REST().setToken(DISCORD_TOKEN);
+    const rest = new REST().setToken(env.discordToken());
 
     try {
         await message.channel.send(`🚀 Iniciando o registro de ${commands.length} comandos de barra (/) no servidor...`);
 
         const data = await rest.put(
-            Routes.applicationGuildCommands(CLIENT_ID, message.guildId),
+            Routes.applicationGuildCommands(env.applicationId(), message.guildId),
             { body: commands },
         );
 
@@ -65,13 +60,13 @@ export async function deployGlobalCommands(message) {
     const commands = collection.commands;
 
     // 2. Registra na API
-    const rest = new REST().setToken(DISCORD_TOKEN);
+    const rest = new REST().setToken(env.discordToken());
 
     try {
         await message.channel.send(`🌍 Iniciando o registro de ${commands.length} comandos de barra (/) GLOBAIS. **Aviso: Isso pode levar até 1 hora para aparecer em todos os servidores!**`);
 
         const data = await rest.put(
-            Routes.applicationCommands(CLIENT_ID), // Rota Global para toda a aplicação
+            Routes.applicationCommands(env.applicationId()), // Rota Global para toda a aplicação
             { body: commands },
         );
 
@@ -95,14 +90,14 @@ export async function deleteGuildCommands(message) {
         return message.reply('❌ Este comando só pode ser usado em um servidor (Guild).');
     }
 
-    const rest = new REST().setToken(DISCORD_TOKEN);
+    const rest = new REST().setToken(env.discordToken());
     const guildId = message.guild.id; 
 
     try {
         await message.channel.send(`🗑️ Iniciando a exclusão dos comandos de barra (/) do seu bot neste servidor: \`${message.guild.name}\`...`);
 
         await rest.put(
-            Routes.applicationGuildCommands(CLIENT_ID, guildId),
+            Routes.applicationGuildCommands(env.applicationId(), guildId),
             { body: [] },
         );
 
@@ -122,13 +117,13 @@ export async function deleteGlobalCommands(message) {
         return message.reply('❌ Você precisa de permissão de Administrador para usar este comando.');
     }
 
-    const rest = new REST().setToken(DISCORD_TOKEN);
+    const rest = new REST().setToken(env.discordToken());
 
     try {
         await message.channel.send('🗑️ Iniciando a exclusão dos comandos de barra (/) GLOBAIS do seu bot...');
 
         await rest.put(
-            Routes.applicationCommands(CLIENT_ID),
+            Routes.applicationCommands(env.applicationId()),
             { body: [] },
         );
 

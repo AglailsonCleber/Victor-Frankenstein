@@ -13,11 +13,12 @@ import path from "path";
 import fs from "fs";
 import fsp from 'fs/promises';
 import { setActivePlayback, clearActivePlayback, getActivePlayback } from '../utils/playbackStateManager.js';
+import { env } from '../config/env.js';
 
 export async function localPlayer(filePath, mediaName, interaction) {
 
     const GUILD_ID = interaction.guildId;
-    const LOCAL_FILE_PATH = path.join(process.cwd(), "data", filePath);
+    const LOCAL_FILE_PATH = path.join(process.cwd(), env.dataDir(), filePath);
     
     // 1. Obtém o ID da mensagem de resposta da interação atual
     let currentMessage;
@@ -235,5 +236,5 @@ export async function localPlayer(filePath, mediaName, interaction) {
         }
     });
 
-    client.login(process.env.DISCORD_TOKEN);
+    client.login(env.discordToken());
 }
