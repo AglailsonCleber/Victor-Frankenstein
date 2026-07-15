@@ -2,11 +2,20 @@
 
 Este guia descreve como implantar o **Victor-Frankenstein** no seu servidor CasaOS, com deploy automatizado via Gitea (espelho do GitHub).
 
-## Arquitetura
+## Arquitetura (deploy exclusivo no Gitea)
 
 ```
-GitHub (push) → Gitea (mirror) → Gitea Actions (runner self-hosted) → Docker no CasaOS
+GitHub (push) → mirror Gitea (sincroniza código)
+                      ↓
+              trigger-gitea-deploy.sh  ← webhook ou manual
+                      ↓
+              Gitea Actions (runner no CasaOS)
+                      ↓
+              Docker no CasaOS
 ```
+
+O deploy **sempre roda no Gitea**, nunca no GitHub. O workflow fica em `.gitea/workflows/deploy.yml`.
+O `.github/workflows/ci.yml` apenas valida o código no GitHub — não faz deploy.
 
 O bot Discord **não expõe porta HTTP** — ele se conecta à API do Discord de forma outbound. Não é necessário mapear portas.
 
@@ -82,9 +91,17 @@ docker compose up -d --build
 docker compose logs -f victor-frankenstein
 ```
 
-## Opção 2: Deploy automatizado (Gitea Actions)
+## Opção 2: Deploy via Gitea Actions (recomendado)
 
-### 1. Configurar mirror GitHub → Gitea
+### Importante: mirror não dispara Actions sozinho
+
+O pull mirror do Gitea **sincroniza o código** mas **não executa** workflows. O deploy no CasaOS precisa ser disparado explicitamente no Gitea.
+
+### 1. Habilitar Actions no repositório
+
+No Gitea: **Settings → Advanced → Repository Units** → habilite **Actions**.
+
+### 2. Configurar mirror GitHub → Gitea
 
 No Gitea, crie um repositório espelho apontando para:
 `https://github.com/AglailsonCleber/Victor-Frankenstein`
@@ -120,14 +137,38 @@ Em **Settings → Actions → Variables**:
 | `MEMORY_LIMIT` | `1024M` |
 | `APP_DATA_PATH` | `/DATA/AppData/victor-frankenstein` |
 
-### 5. Fluxo automático
+### 5. Disparar o deploy no Gitea
 
-A cada push na branch `main` (via mirror do GitHub):
+**Manual (após sync do mirror):**
 
-1. O workflow `.gitea/workflows/deploy.yml` é disparado
-2. O código é sincronizado para `/DATA/AppData/victor-frankenstein`
-3. Um `.env` é gerado a partir dos secrets
-4. `docker compose build` + `up -d` reinicia o bot
+1. **Settings → Mirror → Sync Now**
+2. **Actions → Deploy to CasaOS → Run workflow**
+
+**Automático (após cada push no GitHub):**
+
+Configure um webhook no GitHub que executa no CasaOS:
+
+```bash
+# No servidor CasaOS — variáveis de ambiente
+export GITEA_URL="https://seu-gitea.exemplo.com"
+export GITEA_TOKEN="token_com_escopo_write:repository"
+export GITEA_OWNER="seu-usuario"
+export GITEA_REPO="Victor-Frankenstein"
+
+./scripts/trigger-gitea-deploy.sh
+```
+
+No GitHub: **Settings → Webhooks → Add webhook**
+- URL: endpoint no CasaOS que roda o script acima
+- Events: `push`
+
+**Push direto no Gitea** (sem webhook): se você der `git push` direto no remote do Gitea, o workflow dispara automaticamente via `on: push`.
+
+### 6. O que o workflow faz
+
+1. Copia o código para `/DATA/AppData/victor-frankenstein`
+2. Gera `.env` a partir dos secrets do **Gitea**
+3. Executa `docker compose build` + `up -d` no CasaOS
 
 ## Modos de deploy de comandos
 
@@ -160,7 +201,9 @@ Apenas o diretório de dados é montado no host:
 | Comandos `/` não aparecem | Verifique `DEPLOY_MODE` e `SERVER_ID` |
 | Erro TMDB 401 | Confira `TMDB_BEARER_TOKEN` (use o token v4 Bearer, não API key v3) |
 | Erro Gemini | Confira `GOOGLE_API_KEY` |
-| yt-dlp falha | Container já inclui yt-dlp; verifique conectividade de rede |
+| Pipeline não inicia após push GitHub | Normal — mirror não dispara Actions. Use **Run workflow** ou `trigger-gitea-deploy.sh` |
+| `Waiting for a runner` | Runner offline — execute `act_runner daemon` no CasaOS |
+| Secrets não funcionam | Configure no **Gitea**, não no GitHub |
 
 ## CI no GitHub
 
@@ -175,4 +218,4 @@ git pull
 docker compose up -d --build
 ```
 
-**Automático:** push para `main` no GitHub → mirror → Gitea Actions.
+**Via Gitea:** Actions → Run workflow, ou `./scripts/trigger-gitea-deploy.sh` após push no GitHub.
