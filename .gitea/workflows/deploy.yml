@@ -11,6 +11,9 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: sh
     steps:
       # docker:24-cli não tem git/node — actions/checkout@v4 falha com exit 127
       - name: Checkout
