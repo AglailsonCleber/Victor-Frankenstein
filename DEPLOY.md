@@ -203,7 +203,7 @@ Apenas o diretório de dados é montado no host:
 | Erro Gemini | Confira `GOOGLE_API_KEY` |
 | Pipeline não inicia após push GitHub | Normal — mirror não dispara Actions. Use **Run workflow** ou `trigger-gitea-deploy.sh` |
 | `Waiting for a runner` | Runner offline — execute `act_runner daemon` no CasaOS |
-| Secrets não funcionam | Configure no **Gitea**, não no GitHub |
+| yt-dlp permission denied | `sudo chown -R 1000:1000 /DATA/AppData/victor-frankenstein/data` e redeploy |
 
 ## CI no GitHub
 

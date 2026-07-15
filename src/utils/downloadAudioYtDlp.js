@@ -32,8 +32,9 @@ export async function downloadAudioYtDlp(youtubeUrl, filename) {
     '--extract-audio',            // -x: extrair apenas o áudio
     '--audio-format', 'mp3',      // --audio-format: converter para MP3
     '--output', outputPathTemplate, // -o: caminho de saída e nome do arquivo
-    '--retries', '3',             // Tenta novamente em caso de falha de rede
-    '--no-playlist'               // Garante que se for uma playlist, baixe apenas o primeiro (ou o que for necessário)
+    '--retries', '3',
+    '--no-playlist',
+    '--no-update',
   ];
 
   console.log(`[YT-DLP] ⚙️ Executando: ${YTDL_COMMAND} ${args.join(' ')}`);

@@ -35,7 +35,7 @@ jobs:
       - name: Prepare host data directory
         run: |
           docker run --rm -v /DATA/AppData:/DATA/AppData alpine \
-            sh -c 'mkdir -p /DATA/AppData/victor-frankenstein/data'
+            sh -c 'mkdir -p /DATA/AppData/victor-frankenstein/data && chown -R 1000:1000 /DATA/AppData/victor-frankenstein/data'
 
       - name: Write environment file from secrets
         env:

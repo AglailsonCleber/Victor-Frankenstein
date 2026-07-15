@@ -1,7 +1,5 @@
-# Passo 1: Imagem Base
 FROM node:20-alpine
 
-# Passo 2: Dependências do sistema (FFmpeg, Python, yt-dlp)
 WORKDIR /usr/src/app
 
 RUN apk add --no-cache \
@@ -9,23 +7,23 @@ RUN apk add --no-cache \
     python3 \
     py3-pip \
     yt-dlp \
-    procps
+    procps \
+    su-exec
 
-# Passo 3: Dependências Node.js (cache layer)
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-# Passo 4: Código-fonte
 COPY . .
 
-# Passo 5: Diretório de dados persistente
-RUN mkdir -p /usr/src/app/data
-
-# Passo 6: Usuário não-root
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
+RUN addgroup -S -g 1000 appgroup \
+    && adduser -S -u 1000 -G appgroup appuser \
+    && mkdir -p /usr/src/app/data \
     && chown -R appuser:appgroup /usr/src/app
-USER appuser
+
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV NODE_ENV=production
 
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["npm", "start"]
