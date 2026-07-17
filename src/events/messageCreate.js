@@ -1,8 +1,6 @@
 // src/events/messageCreate.js (Comandos de Música e Admin Integrados e Otimizados)
 
-import { Events, Collection } from "discord.js";
-import QueueManager from '../services/QueueManager.js';
-import MediaTrack from '../models/MediaTrack.js';
+import { Events } from "discord.js";
 import { env } from "../config/env.js";
 
 // --- EXPORTAÇÃO DE DADOS PARA O HANDLER ---\r\n
@@ -17,7 +15,7 @@ export const data = {
  * @param {import('discord.js').Message} message O objeto de mensagem recebido.
  */
 export async function execute(message) {
-  const prefix = "!"; // Assumindo o seu prefixo
+  const prefix = env.commandPrefix();
 
   // Ignora mensagens de bots e mensagens sem o prefixo
   if (message.author.bot || !message.content.startsWith(prefix) || !message.guild || !message.member) return;
@@ -28,8 +26,7 @@ export async function execute(message) {
 
   // Garante que a coleção de QueueManagers existe no client
   if (!message.client.queueManagers) {
-    // Isso deve ser inicializado em index.js, mas garante que não quebre
-    message.client.queueManagers = new Collection(); 
+    message.client.queueManagers = new Map();
   }
   
   // Obtém o manager para o servidor atual
@@ -61,31 +58,7 @@ export async function execute(message) {
     
     // Comandos de Música (Prefixos - Exemplo Simplificado)
     case 'play':
-      // 1. Verifica/cria o player
-      if (!player) {
-          if (!message.member.voice.channelId) {
-            return message.reply('❌ Você precisa estar em um canal de voz para tocar música!');
-          }
-          player = new QueueManager(message.guild);
-          message.client.queueManagers.set(guildId, player);
-      }
-      
-      // 2. Define o canal de texto
-      player.textChannel = message.channel; 
-      
-      // 3. Lógica de dados e criação de MediaTrack (MOCKUP/Simplificado)
-      const dummyTrack = new MediaTrack(
-        args.join(' ') || 'Música de Exemplo Padrão', // Usa args como título
-        'https://fakeurl.com/stream', // URL fictícia para demonstração
-        180, // Duração fictícia
-        message.author.tag
-      );
-
-      // 4. Adiciona e Inicia
-      player.addTrack(dummyTrack);
-      player.start(message.member, message.channel); // Inicia a conexão de voz
-      message.reply(`Adicionado à fila: **${dummyTrack.title}**`);
-      return; 
+      return message.reply('Use `/reproduzir` para tocar música com streaming.');
 
     case 'skip':
     case 'pause':
@@ -94,12 +67,13 @@ export async function execute(message) {
     case 'queue':
     case 'loop':
     case 'shuffle':
-      // 1. Verifica se o player existe
       if (!player) {
         return message.reply('❌ Não há música tocando.');
       }
-      
-      // 2. Executa o método correspondente do player
+
+      if (!player.canControl(message.author.id, message.member)) {
+        return message.reply('❌ Apenas quem iniciou a reprodução (ou quem tem Gerenciar Servidor) pode controlar a fila.');
+      }
       if (player[command]) {
         const result = player[command](); 
         

@@ -1,144 +1,87 @@
 import axios from 'axios';
 import { EmbedBuilder } from 'discord.js';
-import { env } from '../config/env.js';
+import { getEffectiveApiConfig, assertGuildApi } from './guildConfigStore.js';
 
 const BASE_URL = 'https://api.themoviedb.org/3';
-const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
+const genreCache = new Map();
 
-// --- Cache para os Gêneros ---
-let genreCache = {
-    movie: null,
-    tv: null,
-};
-// -----------------------------
+function genreCacheKey(guildId, type) {
+    return `${guildId}:${type}`;
+}
 
-/**
- * Função auxiliar genérica para requisições GET à API TMDB
- */
-async function tmdbGet(endpoint, params = {}) {
+async function tmdbGet(guildId, endpoint, params = {}) {
+    const config = await assertGuildApi(guildId, 'tmdb');
+
     try {
         const response = await axios.get(`${BASE_URL}${endpoint}`, {
             headers: {
-                Authorization: `Bearer ${env.tmdbBearerToken()}`,
+                Authorization: `Bearer ${config.tmdbBearerToken}`,
             },
             params: {
                 ...params,
-                language: env.tmdbLanguage(),
-            }
+                language: config.tmdbLanguage,
+            },
         });
         return response.data;
     } catch (error) {
         console.error(`[TMDB ERROR] Erro na requisição para ${endpoint}: ${error.message}`);
-        throw new Error(`Falha na API TMDB: ${error.response?.status} - ${error.response?.data?.status_message || error.message}`);
+        throw new Error(
+            `Falha na API TMDB: ${error.response?.status ?? ''} ${error.response?.data?.status_message || error.message}`.trim()
+        );
     }
 }
 
-// ===================================================================
-// FUNÇÃO 1: PESQUISA POR TÍTULO (Filme)
-// ===================================================================
-
-/**
- * Pesquisa filmes por título.
- * @param {string} title O título a ser pesquisado.
- * @param {number} page A página de resultados a ser buscada.
- */
-export async function searchMovieByTitle(title, page = 1) {
-    return tmdbGet('/search/movie', { query: title, page: page });
+export async function searchMovieByTitle(guildId, title, page = 1) {
+    return tmdbGet(guildId, '/search/movie', { query: title, page });
 }
 
-// ===================================================================
-// FUNÇÃO 2: PESQUISA POR TÍTULO (Série de TV)
-// ===================================================================
-
-/**
- * Pesquisa séries de TV por título.
- * @param {string} title O título a ser pesquisado.
- * @param {number} page A página de resultados a ser buscada.
- */
-export async function searchTvByTitle(title, page = 1) {
-    return tmdbGet('/search/tv', { query: title, page: page });
+export async function searchTvByTitle(guildId, title, page = 1) {
+    return tmdbGet(guildId, '/search/tv', { query: title, page });
 }
 
-// ===================================================================
-// FUNÇÃO 3: PESQUISA POR NOME (Pessoa)
-// ===================================================================
-
-/**
- * Pesquisa pessoas (atores, diretores, etc.) por nome.
- * @param {string} name O nome a ser pesquisado.
- * @param {number} page A página de resultados a ser buscada.
- */
-export async function searchPersonByName(name, page = 1) {
-    return tmdbGet('/search/person', { query: name, page: page });
+export async function searchPersonByName(guildId, name, page = 1) {
+    return tmdbGet(guildId, '/search/person', { query: name, page });
 }
 
-
-// ===================================================================
-// FUNÇÃO 4: OBTENÇÃO E CACHE DE LISTA DE GÊNEROS
-// ===================================================================
-
-/**
- * Obtém a lista de gêneros para filmes ou TV (usando cache).
- * @param {'movie' | 'tv'} type O tipo de mídia (movie ou tv).
- */
-export async function getGenreList(type) {
-    if (genreCache[type]) {
-        console.log(`[TMDB] Usando cache para gêneros de ${type}.`);
-        return genreCache[type];
+export async function getGenreList(guildId, type) {
+    const key = genreCacheKey(guildId, type);
+    if (genreCache.has(key)) {
+        return genreCache.get(key);
     }
-    
-    console.log(`[TMDB] Buscando gêneros de ${type} na API...`);
-    const data = await tmdbGet(`/genre/${type}/list`);
-    
-    // Armazena a lista de gêneros no cache.
-    genreCache[type] = data.genres;
+
+    const data = await tmdbGet(guildId, `/genre/${type}/list`);
+    genreCache.set(key, data.genres);
     return data.genres;
 }
 
-// ===================================================================
-// FUNÇÃO 5: DISCOVER (Pesquisa por Gênero/Filtro)
-// ===================================================================
-
-/**
- * Realiza uma pesquisa avançada (Discover) por gênero.
- * @param {'movie' | 'tv'} type O tipo de mídia.
- * @param {number} genreId O ID do gênero.
- * @param {number} page A página de resultados.
- */
-export async function discoverByGenre(type, genreId, page = 1) {
-    return tmdbGet(`/discover/${type}`, { with_genres: genreId, page: page });
+export async function discoverByGenre(guildId, type, genreId, page = 1) {
+    return tmdbGet(guildId, `/discover/${type}`, {
+        with_genres: genreId,
+        page,
+    });
 }
 
-// ===================================================================
-// FUNÇÃO 6: ONDE ASSISTIR (Watch Providers)
-// ===================================================================
+export async function getWatchProviders(guildId, type, id, title) {
+    const config = await getEffectiveApiConfig(guildId);
+    const data = await tmdbGet(guildId, `/${type}/${id}/watch/providers`);
 
-/**
- * Obtém os provedores de streaming (onde assistir) para um filme ou série.
- * @param {'movie' | 'tv'} type O tipo de mídia.
- * @param {number} id O ID do filme ou série.
- * @param {string} title O título do filme/série para o embed.
- * @returns {Promise<EmbedBuilder>} Um Embed contendo as informações dos provedores.
- */
-export async function getWatchProviders(type, id, title) { // Adicionar export
-    const data = await tmdbGet(`/${type}/${id}/watch/providers`);
     const embed = new EmbedBuilder()
         .setColor(0x0099ff)
         .setTitle(`Onde Assistir: ${title}`);
 
-    const providers = data.results?.[env.tmdbWatchRegion()];
+    const providers = data.results?.[config.tmdbWatchRegion];
 
     if (!providers) {
-        embed.setDescription('Informações de *Onde Assistir* não disponíveis para o Brasil.');
+        embed.setDescription(
+            `Informações de *Onde Assistir* não disponíveis para a região ${config.tmdbWatchRegion}.`
+        );
         return embed;
     }
 
     const { flatrate, rent, buy, link } = providers;
-
-    // Função auxiliar para mapear nomes
     const mapProviders = (list) => {
-        if (!list || list.length === 0) return 'Nenhuma opção encontrada.';
-        return list.map(p => `• ${p.provider_name}`).join('\n');
+        if (!list?.length) return 'Nenhuma opção encontrada.';
+        return list.map((p) => `• ${p.provider_name}`).join('\n');
     };
 
     embed.addFields(
@@ -148,9 +91,17 @@ export async function getWatchProviders(type, id, title) { // Adicionar export
     );
 
     if (link) {
-        embed.setURL(link); // Link direto para o TMDB com mais opções
+        embed.setURL(link);
         embed.setFooter({ text: 'Fonte: TMDB (JustWatch). Clique no título para ver mais opções.' });
     }
 
     return embed;
+}
+
+export function invalidateGenreCache(guildId) {
+    for (const key of genreCache.keys()) {
+        if (key.startsWith(`${guildId}:`)) {
+            genreCache.delete(key);
+        }
+    }
 }

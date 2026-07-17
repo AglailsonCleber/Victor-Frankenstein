@@ -1,59 +1,54 @@
-// src/commands/slash/conversar.js (Slash Command)
-
-import { SlashCommandBuilder } from 'discord.js';
-import { getGeminiResponse } from '../../services/api_gemini.js'; 
-import { EmbedBuilder } from 'discord.js'; 
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { getGeminiResponse } from '../../services/api_gemini.js';
+import { checkRateLimit } from '../../utils/rateLimiter.js';
+import { env } from '../../config/env.js';
 
 export const data = new SlashCommandBuilder()
     .setName('conversar')
-    .setDescription('Inicia ou continua uma conversa com o monstro (mantém o contexto por canal).')
-    .addStringOption(option =>
-        option.setName('discussão')
-            .setDescription('Sua discussão com o monstro começa aqui.')
+    .setDescription('Conversa com o monstro (contexto por canal).')
+    .addStringOption((option) =>
+        option
+            .setName('discussão')
+            .setDescription('Sua mensagem para o monstro.')
             .setRequired(true)
     );
 
-/**
- * @param {import('discord.js').ChatInputCommandInteraction} interaction - O objeto de interação do Discord.
- */
 export async function execute(interaction) {
-    const prompt = interaction.options.getString('discussão');
+    const guildId = interaction.guildId;
     const channelId = interaction.channelId;
+    const userId = interaction.user.id;
+    const prompt = interaction.options.getString('discussão');
 
-    // Responde ao Discord imediatamente para evitar o "Application did not respond"
-    // Usamos deferReply para indicar que estamos processando (aparece "O bot está pensando...")
+    const rate = checkRateLimit(`conversar:${guildId}:${userId}`, env.rateLimitConversarMs());
+    if (!rate.ok) {
+        return interaction.reply({
+            content: `⏳ Calma aí — aguarde ${rate.retryAfterSec}s antes de enviar outra mensagem.`,
+            ephemeral: true,
+        });
+    }
+
     await interaction.deferReply();
 
     try {
-        // 1. Chama a função do Serviço Gemini
-        const replyText = await getGeminiResponse(channelId, prompt);
-        
-        let finalReply = replyText;
-        const MAX_LENGTH = 2000;
+        const replyText = await getGeminiResponse(guildId, channelId, prompt);
+        const finalReply =
+            replyText.length > 2000 ? `${replyText.substring(0, 1997)}...` : replyText;
 
-        // 2. Truncamento da resposta
-        if (finalReply.length > MAX_LENGTH) {
-            finalReply = finalReply.substring(0, MAX_LENGTH - 3) + "...";
-        }
-        
-        // 3. Edita a resposta adiada (deferReply) com a resposta do Gemini
         await interaction.editReply({ content: finalReply });
-
     } catch (error) {
-        console.error("Erro no processamento da API Gemini:", error.message);
-        
-        // 4. Tratamento de erro específico para limite de taxa (429)
-        if (error.message && error.message.includes("429")) {
+        console.error('[CONVERSAR] Erro Gemini:', error.message);
+
+        if (error.message?.includes('429')) {
             const embed = new EmbedBuilder()
-                .setColor(0xFF0000)
-                .setDescription("⚠️ **Limite de Uso Excedido.**\\nO bot atingiu o limite de tokens ou requisições do plano gratuito. Tente novamente em alguns minutos ou amanhã.");
-            
-            await interaction.editReply({ embeds: [embed] });
-        } else {
-            // Tratamento de outros erros
-            await interaction.editReply({ 
-                content: `❌ Ocorreu um erro ao processar sua discussão: ${error.message.substring(0, 100)}...` 
-            });
+                .setColor(0xff0000)
+                .setDescription(
+                    '⚠️ **Limite de uso excedido.** Tente novamente em alguns minutos.'
+                );
+            return interaction.editReply({ embeds: [embed] });
         }
+
+        await interaction.editReply({
+            content: `❌ ${error.message}`,
+        });
     }
 }

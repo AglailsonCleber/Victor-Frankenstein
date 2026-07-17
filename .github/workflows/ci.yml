@@ -28,9 +28,6 @@ jobs:
         run: |
           DISCORD_TOKEN=test \
           APPLICATION_ID=test \
-          TMDB_BEARER_TOKEN=test \
-          GOOGLE_API_KEY=test \
-          SERVER_ID=test \
           node --input-type=module -e "import { validateEnv } from './src/config/env.js'; validateEnv(); console.log('OK')"
 
       - name: Validate Docker Compose

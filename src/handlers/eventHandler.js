@@ -44,11 +44,8 @@ export async function loadEvents(client) {
 
                     // 5. Registro do Listener
                     if (isOnce) {
-                        // client.once: Executa apenas uma vez (ex: 'ready')
-                        client.once(eventName, (...args) => event.execute(client, ...args));
+                        client.once(eventName, (...args) => event.execute(...args));
                     } else {
-                        // client.on: Executa todas as vezes que o evento ocorrer (ex: 'messageCreate', 'interactionCreate')
-                        // A função execute deve receber os argumentos corretos para o evento
                         client.on(eventName, (...args) => event.execute(...args));
                     }
 

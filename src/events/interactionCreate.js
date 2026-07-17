@@ -94,6 +94,13 @@ export async function execute(interaction) {
                 return interaction.followUp({ content: '❌ Não há música tocando neste servidor.', ephemeral: true });
             }
 
+            if (!player.canControl(interaction.user.id, interaction.member)) {
+                return interaction.followUp({
+                    content: '❌ Apenas quem iniciou a reprodução (ou quem tem Gerenciar Servidor) pode controlar o player.',
+                    ephemeral: true,
+                });
+            }
+
             let responseContent = '';
             
             switch (buttonId) {
@@ -203,7 +210,7 @@ export async function execute(interaction) {
             await interaction.deferUpdate(); // Defer para editar a mensagem
 
             try {
-                const genres = await getGenreList(type);
+                const genres = await getGenreList(interaction.guildId, type);
 
                 if (!genres || genres.length === 0) {
                     return interaction.editReply({ content: '❌ Não foi possível carregar a lista de gêneros.', components: [] });

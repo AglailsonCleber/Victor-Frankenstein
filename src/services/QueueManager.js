@@ -10,9 +10,10 @@ import {
     entersState,
     VoiceConnectionDisconnectReason
 } from '@discordjs/voice';
-import { Guild, GuildMember, TextChannel } from 'discord.js';
-import path from 'path'; 
-import ytdl from 'ytdl-core'; // << NECESSÁRIO para streaming
+import { Guild, GuildMember, TextChannel, PermissionFlagsBits } from 'discord.js';
+import path from 'path';
+import { env } from '../config/env.js';
+import { createStreamFromYtDlp } from '../utils/streamAudioYtDlp.js';
 
 // Assumindo que estes caminhos estão corretos
 import MediaTrack from '../models/MediaTrack.js'; 
@@ -22,7 +23,7 @@ import { deleteLocalFile } from '../utils/fileCleanup.js';
 // --------------------------------------------------------------------------
 // Constantes e Funções Auxiliares
 // --------------------------------------------------------------------------
-const DATA_DIR = path.join(process.cwd(), 'data'); 
+const DATA_DIR = path.join(process.cwd(), env.dataDir());
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
@@ -37,23 +38,6 @@ const getAudioResourceFromFile = (filename) => {
     return createAudioResource(fullPath, { inlineVolume: true }); 
 };
 
-/**
- * Cria um recurso de áudio a partir de um stream do YouTube.
- * @param {string} url A URL de onde o stream deve ser puxado.
- * @returns {import('@discordjs/voice').AudioResource}
- */
-const getAudioResourceFromStream = (url) => {
-    console.log(`[INFO] Streaming de áudio da URL: ${url}`);
-    
-    const stream = ytdl(url, { 
-        filter: 'audioonly', 
-        dlChunkSize: 0, 
-        highWaterMark: 1 << 25 // Aumenta o buffer para estabilidade
-    });
-    
-    return createAudioResource(stream, { inlineVolume: true }); 
-};
-// --------------------------------------------------------------------------
 
 export default class QueueManager {
     /**
@@ -68,6 +52,10 @@ export default class QueueManager {
         this.playerMessage = null;
         this.isLooping = false;
         this.isShuffling = false;
+        this.controllerUserId = null;
+        this.maxQueueSize = env.maxQueueSize();
+        this.streamProcess = null;
+        this.streamCleanup = null;
         
         this.audioPlayer = createAudioPlayer({
             behaviors: {
@@ -75,7 +63,15 @@ export default class QueueManager {
             },
         });
         
-        this._setupPlayerListeners(); 
+        this._setupPlayerListeners();
+    }
+
+    _killActiveStream() {
+        if (this.streamCleanup) {
+            this.streamCleanup();
+            this.streamCleanup = null;
+        }
+        this.streamProcess = null;
     }
 
     /**
@@ -92,7 +88,7 @@ export default class QueueManager {
                 await deleteLocalFile(this.currentTrack.filePath);
             }
 
-            // 2. CORREÇÃO DE LOOP: currentTrack SÓ É LIMPO SE NÃO FOR PARA REPETIR.
+            this._killActiveStream();
             if (!this.isLooping) {
                 this.currentTrack = null;
             }
@@ -108,7 +104,8 @@ export default class QueueManager {
             if (this.currentTrack && this.currentTrack.filePath) {
                 await deleteLocalFile(this.currentTrack.filePath);
             }
-            
+
+            this._killActiveStream();
             this.currentTrack = null;
             this.playNext(); // Tenta a próxima faixa
         });
@@ -134,6 +131,10 @@ export default class QueueManager {
     async start(member, textChannel) {
         if (!member.voice.channel) {
             return '❌ Você deve estar em um canal de voz para usar este comando.';
+        }
+
+        if (!this.controllerUserId) {
+            this.controllerUserId = member.id;
         }
 
         if (!this.connection) {
@@ -169,6 +170,10 @@ export default class QueueManager {
      * @param {MediaTrack} track A faixa de mídia a ser adicionada.
      */
     addTrack(track) {
+        if (this.queue.length >= this.maxQueueSize) {
+            throw new Error(`A fila atingiu o limite de ${this.maxQueueSize} faixas.`);
+        }
+
         this.queue.push(track);
         console.log(`[QUEUE] ➕ Faixa adicionada: ${track.title}`);
 
@@ -236,8 +241,10 @@ export default class QueueManager {
         
         // 1. LIMPA O PLAYER: Isso libera o bloqueio do arquivo atual
         // Este é o passo CRUCIAL que faltava ser executado antes da limpeza.
-        this.audioPlayer.stop(); // <--- CHAME O STOP AQUI!
+        this.audioPlayer.stop();
         await sleep(500);
+
+        this._killActiveStream();
         // 2. Limpa a faixa atual e deleta o arquivo (Ignorado se for streaming)
         if (this.currentTrack && this.currentTrack.filePath) {
             // O arquivo agora deve estar desbloqueado pelo stop acima
@@ -260,8 +267,7 @@ export default class QueueManager {
         this.connection = null;
         this.isLooping = false;
         this.isShuffling = false;
-        
-        // 6. Deleta a mensagem do player
+        this.controllerUserId = null;
         this.playerMessage?.delete().catch(() => {}); 
         this.playerMessage = null;
 
@@ -324,17 +330,20 @@ export default class QueueManager {
             return;
         }
 
-        this.currentTrack = nextTrack; // Define o novo currentTrack
+        this.currentTrack = nextTrack;
 
         try {
+            this._killActiveStream();
+
             let resource;
-            // <<<< LÓGICA ARQUIVO LOCAL VS. STREAMING >>>>
             if (nextTrack.filePath) {
-                // Modo /reproduzir (Arquivo Local)
                 resource = getAudioResourceFromFile(nextTrack.filePath);
             } else {
-                // Modo /stream (Streaming Direto)
-                resource = getAudioResourceFromStream(nextTrack.url);
+                console.log(`[INFO] Streaming via yt-dlp: ${nextTrack.url}`);
+                const stream = createStreamFromYtDlp(nextTrack.url);
+                this.streamProcess = stream.process;
+                this.streamCleanup = stream.cleanup;
+                resource = stream.resource;
             }
 
             this.audioPlayer.play(resource);
@@ -348,9 +357,10 @@ export default class QueueManager {
             }
 
         } catch (error) {
+            console.error(`[PLAYER] Erro ao tocar ${nextTrack.title}:`, error);
             this.textChannel?.send(`❌ Erro ao tocar ${nextTrack.title}. Pulando...`);
-            
-            // 1. LIMPEZA DO ARQUIVO LOCAL APÓS FALHA DE REPRODUÇÃO (Ignorado se for streaming)
+
+            this._killActiveStream();
             if (nextTrack.filePath) {
                 await deleteLocalFile(nextTrack.filePath);
             }
@@ -410,6 +420,16 @@ export default class QueueManager {
         this.isLooping = false; // Desativa loop se ativar shuffle
         this.updatePlayerMessage();
         return this.isShuffling ? '🔀 Shuffle ativado! A fila será embaralhada a cada faixa.' : '➡️ Shuffle desativado.';
+    }
+
+    canControl(userId, member = null) {
+        if (member?.permissions?.has(PermissionFlagsBits.ManageGuild)) {
+            return true;
+        }
+        if (!this.controllerUserId) {
+            return true;
+        }
+        return this.controllerUserId === userId;
     }
 
     /**
