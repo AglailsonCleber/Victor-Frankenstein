@@ -1,25 +1,23 @@
-// src/commands/slash/pesquisar.js (ES Module)
-
 import {
     SlashCommandBuilder,
     EmbedBuilder,
     ActionRowBuilder,
-    StringSelectMenuBuilder
-} from 'discord.js'; // Mudar require para import
+    StringSelectMenuBuilder,
+} from 'discord.js';
+import { assertGuildApi } from '../../services/guildConfigStore.js';
 
-// ID ÚNICO para o componente (necessário para o interactionCreate.js)
-export const MENU_ID = 'menu_select_search_type'; 
+export const MENU_ID = 'menu_select_search_type';
 
-// 1. Exportar 'data' como uma constante para o handler
 export const data = new SlashCommandBuilder()
     .setName('pesquisar')
-    .setDescription('Abre o menu principal de pesquisa.');
+    .setDescription('Abre o menu principal de pesquisa TMDB.');
 
-// 2. Exportar 'execute' como uma função assíncrona
-/**
- * @param {import('discord.js').ChatInputCommandInteraction} interaction O objeto de interação de comando de barra.
- */
 export async function execute(interaction) {
+    try {
+        await assertGuildApi(interaction.guildId, 'tmdb');
+    } catch (error) {
+        return interaction.reply({ content: `❌ ${error.message}`, ephemeral: true });
+    }
 
     // 1. Cria o Embed que servirá como título do menu
     const menuEmbed = new EmbedBuilder()

@@ -1,62 +1,39 @@
-// src/commands/prefix/ajuda.js (ES Module)
+import { EmbedBuilder } from 'discord.js';
 
-import { EmbedBuilder } from 'discord.js'; // Substitui require
-
-// 1. Exporta 'data' como uma constante
 export const data = {
     name: 'ajuda',
-    description: 'Mostra todos os comandos disponíveis e o que eles fazem.',
+    description: 'Mostra todos os comandos disponíveis.',
 };
 
-// 2. Exporta 'execute' como uma função assíncrona
-export async function execute(message, args) {
+export async function execute(message) {
     const helpEmbed = new EmbedBuilder()
         .setColor(0x0099ff)
-        .setTitle('Ajuda do Frankenstein')
-        .setDescription('Olá! Eu sou o bot do Victor-Frankenstein. Minha especialidade é não ter especialidades. Aqui está o que eu posso, mas não quero fazer:')
+        .setTitle('Ajuda — Victor-Frankenstein')
+        .setDescription('Bot de entretenimento: TMDB, Gemini AI e música em canal de voz.')
         .addFields(
             {
-                name: 'Comandos de Barra (/)',
-                value: 'Use estes comandos para interagir comigo. São apenas dois:'
+                name: 'Comandos slash (/)',
+                value:
+                    '`/pesquisar` — Busca filmes, séries e pessoas (TMDB)\n' +
+                    '`/conversar` — Chat com IA (Gemini)\n' +
+                    '`/reproduzir` — Música por link ou busca (streaming)\n' +
+                    '`/config` — API keys do servidor (admin)',
             },
             {
-                name: '`/pesquisar`',
-                value: 'Abre o menu principal para você escolher o que deseja pesquisar (filmes, séries ou pessoas).'
+                name: 'Prefixo (!)',
+                value:
+                    '`!ping` — Teste de latência\n' +
+                    '`!ajuda` — Esta mensagem\n' +
+                    '`!skip`, `!pause`, `!resume`, `!stop`, `!queue` — Controles de fila',
             },
             {
-                name: 'Comandos de Prefixo (!)',
-                value: 'Comandos de utilidade e administração.'
-            },
-            {
-                name: '`!ajuda`',
-                value: 'Mostra esta mensagem de ajuda.'
-            },
-            {
-                name: '`!ping`',
-                value: 'Verifica se estou online e minha latência.'
-            },
-            {
-                name: 'Comandos Administrativos (!)',
-                value: 'Requer permissão de Administrador.',
-                inline: false,
-            },
-            {
-                name: '`!deploy-commands`',
-                value: 'Registra os comandos de barra do bot neste servidor.',
-                inline: true,
-            },
-            {
-                name: '`!delete-my-guild`',
-                value: 'Remove apenas os meus comandos de barra (/) deste servidor.',
-                inline: true,
-            },
-            {
-                name: '`!delete-my-global`',
-                value: 'Remove meus comandos de barra (/) de todos os servidores globalmente.',
-                inline: true,
-            },
+                name: 'Configuração por servidor',
+                value:
+                    'Administradores podem usar `/config definir` para TMDB e Gemini.\n' +
+                    'Cada servidor usa suas próprias keys, sem depender das keys globais do bot.',
+            }
         )
-        .setFooter({ text: 'Obrigado por me usar!' });
+        .setFooter({ text: 'Keys globais (.env) são fallback opcional.' });
 
     await message.reply({ embeds: [helpEmbed] });
 }

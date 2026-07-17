@@ -197,12 +197,26 @@ function buildEmbedAndComponents(data, currentResultIndex, currentPage, searchTy
  * @param {string} [searchMode='title'] 'title' para busca por título/nome, ou 'genre' para descoberta por gênero.
  */
 export async function startPagination(interaction, query, searchType, searchMode = 'title') {
+    const guildId = interaction.guildId;
 
-    // --- 1. Estado Inicial ---
     let currentPage = 1;
     let currentResultIndex = 0;
 
-    let searchFunction = getSearchFunction(searchType, searchMode);
+    const searchFunction = async (searchQuery, page) => {
+        if (searchMode === 'genre') {
+            return discoverByGenre(guildId, searchType, searchQuery, page);
+        }
+        switch (searchType) {
+            case 'movie':
+                return searchMovieByTitle(guildId, searchQuery, page);
+            case 'tv':
+                return searchTvByTitle(guildId, searchQuery, page);
+            case 'person':
+                return searchPersonByName(guildId, searchQuery, page);
+            default:
+                throw new Error(`Tipo de busca inválido: ${searchType}`);
+        }
+    };
 
     let tmdbData;
     let firstReply;
@@ -343,7 +357,12 @@ export async function startPagination(interaction, query, searchType, searchMode
             const currentItem = tmdbData.results[currentResultIndex];
             if (currentItem) {
                 // Chama a função da API para buscar os provedores
-                const providerEmbed = await getWatchProviders(searchType, currentItem.id, currentItem.title || currentItem.name);
+                const providerEmbed = await getWatchProviders(
+                    guildId,
+                    searchType,
+                    currentItem.id,
+                    currentItem.title || currentItem.name
+                );
 
                 // Edita a mensagem para mostrar o embed de provedores
                 await i.editReply({

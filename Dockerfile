@@ -6,9 +6,9 @@ RUN apk add --no-cache \
     ffmpeg \
     python3 \
     py3-pip \
-    yt-dlp \
     procps \
-    su-exec
+    su-exec \
+    && pip3 install --break-system-packages --upgrade yt-dlp
 
 COPY package*.json ./
 RUN npm ci --omit=dev

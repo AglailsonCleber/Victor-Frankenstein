@@ -2,9 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import { execFile } from 'child_process';
 import { env } from '../config/env.js';
+import { ytdlpCommand, YTDLP_YOUTUBE_ARGS } from './ytdlpYouTube.js';
 
 const DATA_DIR = path.resolve(process.cwd(), env.dataDir());
-const YTDL_COMMAND = env.ytdlpCommand();
 
 // ---------------------------------
 // Função de download usando YT-DLP 
@@ -28,20 +28,19 @@ export async function downloadAudioYtDlp(youtubeUrl, filename) {
   // 3. Argumentos para o yt-dlp:
   const args = [
     youtubeUrl,
+    ...YTDLP_YOUTUBE_ARGS,
     '--extract-audio',            // -x: extrair apenas o áudio
     '--audio-format', 'mp3',      // --audio-format: converter para MP3
     '--output', outputPathTemplate, // -o: caminho de saída e nome do arquivo
     '--retries', '3',
-    '--no-playlist',
-    '--no-update',
   ];
 
-  console.log(`[YT-DLP] ⚙️ Executando: ${YTDL_COMMAND} ${args.join(' ')}`);
+  console.log(`[YT-DLP] ⚙️ Executando: ${ytdlpCommand()} ${args.join(' ')}`);
 
   // 4. Executa o yt-dlp e espera o resultado
   return new Promise((resolve, reject) => {
     // execFile é preferível ao exec por razões de segurança (evita interpretação de shell)
-    execFile(YTDL_COMMAND, args, { cwd: DATA_DIR }, (error, stdout, stderr) => {
+    execFile(ytdlpCommand(), args, { cwd: DATA_DIR }, (error, stdout, stderr) => {
       if (error) {
         console.error(`[YT-DLP] 💥 ERRO (Code ${error.code}): ${error.message}`);
         console.error(`[YT-DLP] 💥 STDERR: ${stderr}`);

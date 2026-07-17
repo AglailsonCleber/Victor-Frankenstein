@@ -48,39 +48,6 @@ export async function deployGuildCommands(message) {
 
 
 // ====================================================================\r\n
-// FUNÇÃO 2: DELETAR COMANDOS NA GUILD ATUAL
-// ====================================================================\r\n
-
-/**
- * Deleta todos os comandos de barra da Guilda onde o comando de prefixo foi enviado.
- * @param {import('discord.js').Message} message O objeto Message do comando.
- */
-export async function deleteGuildCommands(message) {
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-        return message.reply('❌ Você precisa de permissão de Administrador para usar este comando.');
-    }
-
-    const rest = new REST().setToken(DISCORD_TOKEN);
-    const GUILD_ID_TARGET = message.guild.id;
-
-    try {
-        await message.channel.send('🗑️ Iniciando a exclusão dos comandos de barra (/) deste servidor...');
-
-        // Rota específica para comandos de Guilda com corpo vazio
-        await rest.put(
-            Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID_TARGET),
-            { body: [] },
-        );
-
-        await message.channel.send('✅ Sucesso! Comandos de barra (/) do bot foram excluídos deste servidor.');
-    } catch (error) {
-        console.error('❌ Erro ao deletar comandos do servidor:', error);
-        await message.channel.send('❌ Erro ao comunicar com a API do Discord para exclusão de Guilda.');
-    }
-}
-
-
-// ====================================================================\r\n
 // FUNÇÃO 3: DEPLOY (REGISTRAR) COMANDOS GLOBAIS (LENTO)
 // ====================================================================\r\n
 
